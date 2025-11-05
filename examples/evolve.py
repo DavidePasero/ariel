@@ -18,7 +18,9 @@ from rich.traceback import install
 from ariel.ec.a001 import Individual
 from ariel.ec.a004 import EAStep, EA
 from ariel.ec.genotypes.genotype_mapping import GENOTYPES_MAPPING
+from morphology_fitness_analysis import MorphologyAnalyzer
 from ea_settings import EASettings
+from evolution_dashboard import run_dashboard
 
 # Global constants
 SEED = 42
@@ -165,6 +167,25 @@ def read_config_file() -> EASettings:
     return settings
     
 
+# Example usage
+def analyze_evolution_videos(analyzer: MorphologyAnalyzer, populations: list[Population], decoder: Callable) -> None:
+    """Create evolution videos for different visualizations."""
+
+    analyzer.create_evolution_video(
+        populations=populations,
+        decoder=decoder,
+        plot_method_name="plot_fitness_distributions",
+        video_filename="videos/fitness_distributions.mp4"
+    )
+
+    analyzer.create_evolution_video(
+        populations=populations,
+        decoder=decoder,
+        plot_method_name="plot_pairwise_feature_landscapes",
+        video_filename="videos/pairwise_feature_landscapes.mp4"
+    )
+
+
 def main() -> None:
     """Entry point."""
     config = read_config_file()
@@ -173,7 +194,7 @@ def main() -> None:
     population_list = evaluate(population_list, config)
 
     # Create EA steps
-    
+
     ops = [
         EAStep("parent_selection", partial(parent_selection, config=config)),
         EAStep("crossover",        partial(crossover,        config=config)),
@@ -186,7 +207,7 @@ def main() -> None:
     ea = EA(
         population_list,
         operations=ops,
-        num_of_generations=config.num_of_generations,
+        num_of_generations=100,
     )
 
     ea.run()
@@ -202,20 +223,34 @@ def main() -> None:
 
     fitnesses = []
 
-    for i in range(config.num_of_generations):
+    populations = []
+    for i in range(100):
         ea.fetch_population(only_alive=False, best_comes=None, custom_logic=[Individual.time_of_birth==i])
         individuals = ea.population
+        populations.append(individuals)
         avg_fitness = sum(ind.fitness for ind in individuals) / len(individuals) if individuals else 0
         console.log(f"Generation {i}: Avg Fitness = {avg_fitness}")
         fitnesses.append(avg_fitness)
 
     # Line plot of the fitness
-    plt.plot(range(config.num_of_generations), fitnesses, marker='o')
-    plt.title(f'{config.genotype.__name__} - Task: {config.task}')
+    plt.plot(range(100), fitnesses, marker='o')
+    plt.title(f'{config.genotype.__name__} - {config.task}')
     plt.xlabel('Generation')
     plt.ylabel('Average Fitness')
-    plt.savefig(f'avg_fitness_over_generations_{config.genotype.__name__}_{config.task}.png')
+    plt.savefig(f'average_fitness_over_generations_{config.genotype.__name__}_{config.task}.png')
     plt.show()
+
+    morphology_analyzer = MorphologyAnalyzer()
+    morphology_analyzer.load_target_robots(config.task_params["target_robot_path"])
+
+    #analyze_evolution_videos(morphology_analyzer, populations, lambda x: config.genotype.to_digraph(config.genotype.from_json(x)))
+
+    # Launch interactive dashboard
+    print("\nLaunching Evolution Dashboard...")
+
+    decoder = lambda individual: config.genotype.to_digraph(config.genotype.from_json(individual.genotype))
+    run_dashboard(populations, decoder, config)
+    
 
 if __name__ == "__main__":
     main()

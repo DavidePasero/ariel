@@ -32,7 +32,7 @@ def _get_6d_descriptors(individual: Individual, config: EASettings):
 
 @register_fitness("evolve_to_copy")
 def evolve_to_copy(population: Population, config: EASettings) -> Population:
-    target_descriptor = load_target_robot(Path("examples/target_robots/" + str(config.task_params["target_robot_path"])))
+    target_descriptor = load_target_robot(Path(config.task_params["target_robot_path"]))
     for ind in population:
         measures = _get_6d_descriptors(ind, config)
         fitness = compute_fitness_scores(target_descriptor, measures)
