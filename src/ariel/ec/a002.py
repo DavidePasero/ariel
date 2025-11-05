@@ -13,7 +13,6 @@ from sqlalchemy import Engine
 from sqlmodel import Session, select
 
 # Local libraries
-from ariel.ec.a000 import IntegersGenerator
 from ariel.ec.a001 import Individual, init_database
 
 # Global constants

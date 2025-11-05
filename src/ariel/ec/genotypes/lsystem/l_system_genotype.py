@@ -19,11 +19,11 @@ References
 """
 
 # Standard library
-
+from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, TYPE_CHECKING
 from enum import Enum
 
 # Third-party libraries
@@ -35,6 +35,11 @@ from networkx.readwrite import json_graph
 
 # Local libraries
 from ariel.body_phenotypes.robogen_lite.config import ModuleFaces, ModuleRotationsTheta, ModuleType, ModuleInstance,ModuleRotationsIdx
+
+from ariel.ec.genotypes.genotype import Genotype
+if TYPE_CHECKING:
+    from ariel.ec.mutations import LSystemMutator
+    from ariel.ec.crossovers import LSystemCrossover
 
 SEED = 42
 DPI = 300
@@ -175,7 +180,7 @@ class lsystem_core(lsystem_element):
         self.allowed_connection=['LEFT','RIGHT','FRONT','BACK']
         self.name='C'
 
-class LSystemDecoder:
+class LSystemDecoder(Genotype):
     """Implements an L-system-based decoder for modular robot graphs."""
 
     def __init__(
@@ -200,6 +205,67 @@ class LSystemDecoder:
         self.max_elements = max_elements
         self.max_depth = max_depth
         self.verbose=verbose
+
+    @staticmethod
+    def get_crossover_object() -> LSystemCrossover:
+        from ariel.ec.crossovers import LSystemCrossover
+        return LSystemCrossover()
+    
+    @staticmethod
+    def get_mutator_object() -> LSystemMutator:
+        from ariel.ec.mutations import LSystemMutator
+        return LSystemMutator()
+    
+    @staticmethod
+    def create_individual(
+        iterations: int = 2,
+        max_elements: int = 32,
+        max_depth: int = 8,
+        verbose: int = 0,
+        **kwargs: dict
+    ) -> LSystemDecoder:
+        base_rules = {"C": "C", "B": "B", "H": "H", "N": "N"}
+
+        indiv = LSystemDecoder(
+            axiom="C",
+            rules=base_rules,
+            iterations=iterations,
+            max_elements=max_elements,
+            max_depth=max_depth,
+            verbose=verbose,
+        )
+        # Materialize expanded_token, structure, and graph
+        indiv.refresh()
+        return indiv
+
+    def to_json(self, *, indent: int = 2) -> str:
+        return json.dumps({
+            "axiom": self.axiom,
+            "rules": self.rules,
+            "iterations": self.iterations,
+            "max_elements": self.max_elements,
+            "max_depth": self.max_depth,
+            "verbose": self.verbose,
+        }, indent=indent)
+    
+    @staticmethod
+    def from_json(json_data: str) -> LSystemDecoder:
+        data = json.loads(json_data)
+        indiv = LSystemDecoder(
+            axiom=data["axiom"],
+            rules=data["rules"],
+            iterations=data["iterations"],
+            max_elements=data["max_elements"],
+            max_depth=data["max_depth"],
+            verbose=data.get("verbose", 0),
+        )
+        # Materialize expanded_token, structure, and graph
+        indiv.refresh()
+        return indiv
+
+    def to_digraph(self) -> nx.DiGraph:
+        self.generate_lsystem_graph()
+        return self.graph
 
     def expand_lsystem(self):
         expanded_token = []
