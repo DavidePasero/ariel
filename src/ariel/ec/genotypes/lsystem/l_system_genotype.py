@@ -237,16 +237,15 @@ class LSystemDecoder(Genotype):
         # Materialize expanded_token, structure, and graph
         indiv.refresh()
         return indiv
-    
-    @staticmethod
-    def to_json(robot_genotype: LSystemDecoder, *, indent: int = 2) -> str:
+
+    def to_json(self, *, indent: int = 2) -> str:
         return json.dumps({
-            "axiom": robot_genotype.axiom,
-            "rules": robot_genotype.rules,
-            "iterations": robot_genotype.iterations,
-            "max_elements": robot_genotype.max_elements,
-            "max_depth": robot_genotype.max_depth,
-            "verbose": robot_genotype.verbose,
+            "axiom": self.axiom,
+            "rules": self.rules,
+            "iterations": self.iterations,
+            "max_elements": self.max_elements,
+            "max_depth": self.max_depth,
+            "verbose": self.verbose,
         }, indent=indent)
     
     @staticmethod
@@ -264,10 +263,9 @@ class LSystemDecoder(Genotype):
         indiv.refresh()
         return indiv
 
-    @staticmethod
-    def to_digraph(robot: LSystemDecoder):
-        robot.generate_lsystem_graph()
-        return robot.graph
+    def to_digraph(self) -> nx.DiGraph:
+        self.generate_lsystem_graph()
+        return self.graph
 
     def expand_lsystem(self):
         expanded_token = []

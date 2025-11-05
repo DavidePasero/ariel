@@ -5,12 +5,17 @@
 [run]
 # Choose which genotype profile to use for this run.
 # One of: "integers", "tree", "lsystem", "cppn"
-genotype = "lsystem"
+genotype = "tree"
 
+# Choose which (morphological) task we want to try
+# One of "evolve_to_copy", "evolve_for_novelty"
 task = "evolve_to_copy"
 
-[task.evolve_to_copy]
+[task.evolve_to_copy.params]
 target_robot_path = "small_robot_8.json"
+
+[task.evolve_for_novelty.params]
+n_points_to_consider =  10
 
 # =========================
 # Global EC settings (match EASettings fields)

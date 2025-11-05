@@ -29,15 +29,13 @@ class Genotype(ABC):
         """Generate a new individual of this genotype type."""
         raise NotImplementedError("Individual generation not implemented for this genotype type.")
 
-    @staticmethod
     @abstractmethod
-    def to_digraph(robot_genotype: "Genotype", **kwargs: dict) -> nx.DiGraph:
+    def to_digraph(self: "Genotype", **kwargs: dict) -> nx.DiGraph:
         """Convert the genotype to a directed graph representation."""
         raise NotImplementedError("Conversion to directed graph not implemented for this genotype type.")
     
-    @staticmethod
     @abstractmethod
-    def to_json(robot_genotype: "Genotype", **kwargs: dict) -> str:
+    def to_json(self: "Genotype", **kwargs: dict) -> str:
         """Convert the genotype to a JSON-serializable dictionary."""
         raise NotImplementedError("Conversion to JSON not implemented for this genotype type.")
     

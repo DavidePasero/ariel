@@ -37,11 +37,10 @@ class TreeGenome(Genotype):
     def create_individual(**kwargs: dict) -> TreeGenome:
         """Generate a new TreeGenome individual."""
         return TreeGenome.default_init()
-    
-    @staticmethod
-    def to_digraph(robot_genotype: TreeGenome, use_node_ids: bool = False) -> nx.DiGraph:
+
+    def to_digraph(self, use_node_ids: bool = False) -> nx.DiGraph:
         g = nx.DiGraph()
-        root = robot_genotype.root
+        root = self.root
         if root is None:
             return g
 
@@ -204,10 +203,9 @@ class TreeGenome(Genotype):
             "root": None if robot_genome._root is None else robot_genome._root.to_dict()
         }
 
-    @staticmethod
-    def to_json(robot_genome: "TreeGenome", *, indent: int | None = 2) -> str:
+    def to_json(self, *, indent: int | None = 2) -> str:
         """Serialize to a JSON string."""
-        return json.dumps(TreeGenome.to_dict(robot_genome), indent=indent)
+        return json.dumps(TreeGenome.to_dict(self), indent=indent)
 
     # TODO: Implement this
     # def __deepcopy__(self, memo) -> 'TreeGenome':

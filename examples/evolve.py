@@ -2,28 +2,23 @@
 from __future__ import annotations
 import random
 from collections.abc import Callable
-from dataclasses import dataclass
 from pathlib import Path
 import tomllib
-from typing import Literal, cast, TYPE_CHECKING
+from typing import Literal
 from functools import partial
 import matplotlib.pyplot as plt
 
 # Third-party libraries
+from fitness_functions import FITNESS_FUNCTIONS
 import numpy as np
-from pydantic_settings import BaseSettings
 from rich.console import Console
 from rich.traceback import install
 
 # Local libraries
 from ariel.ec.a001 import Individual
 from ariel.ec.a004 import EAStep, EA
-from ariel.ec.mutations import Mutation
-from ariel.ec.crossovers import Crossover
 from ariel.ec.genotypes.genotype_mapping import GENOTYPES_MAPPING
-from morphology_fitness_analysis import compute_6d_descriptor, load_target_robot, compute_fitness_scores
-
-from ariel.ec.genotypes.genotype import Genotype
+from ea_settings import EASettings
 
 # Global constants
 SEED = 42
@@ -37,29 +32,6 @@ RNG = np.random.default_rng(SEED)
 # Type Aliases
 type Population = list[Individual]
 type PopulationFunc = Callable[[Population], Population]
-
-class EASettings(BaseSettings):
-    quiet: bool = False
-
-    # EC mechanisms
-    is_maximisation: bool = True
-    first_generation_id: int = 0
-    num_of_generations: int = 100
-    target_population_size: int = 100
-    genotype: type[Genotype]
-    mutation: Mutation
-    mutation_params: dict = {}
-    crossover: Crossover
-    crossover_params: dict = {}
-
-    task: str = "evolve_to_copy"
-    target_robot_file_path: Path | None = Path("examples/target_robots/small_robot_8.json")
-
-    # Data config
-    output_folder: Path = Path.cwd() / "__data__"
-    db_file_name: str = "database.db"
-    db_file_path: Path = output_folder / db_file_name
-    db_handling: DB_HANDLING_MODES = "delete"
 
 # ------------------------ EA STEPS ------------------------ #
 def parent_selection(population: Population, config: EASettings) -> Population:
@@ -91,13 +63,13 @@ def crossover(population: Population, config: EASettings) -> Population:
 
         # First child
         child_i = Individual()
-        child_i.genotype = config.genotype.to_json(genotype_i)
+        child_i.genotype = genotype_i.to_json()
         child_i.tags = {"mut": True}
         child_i.requires_eval = True
 
         # Second child
         child_j = Individual()
-        child_j.genotype = config.genotype.to_json(genotype_j)
+        child_j.genotype = genotype_j.to_json()
         child_j.tags = {"mut": True}
         child_j.requires_eval = True
 
@@ -113,23 +85,16 @@ def mutation(population: Population, config: EASettings) -> Population:
                 individual=genes,
                 **config.mutation_params,
             )
-            ind.genotype = config.genotype.to_json(mutated)
+            ind.genotype = mutated.to_json()
             ind.requires_eval = True
     return population
 
 
 def evaluate(population: Population, config: EASettings) -> Population:
-    if config.task == "evolve_to_copy":
-        target_descriptor = load_target_robot(Path("examples/target_robots/" + str(config.target_robot_file_path)))
-
-        for ind in population:
-            genotype = config.genotype.from_json(ind.genotype)
-            # Convert to digraph
-            ind_digraph = genotype.to_digraph(genotype)
-            # Compute the morphological descriptors
-            measures = compute_6d_descriptor(ind_digraph)
-            fitness = compute_fitness_scores(target_descriptor, measures)
-            ind.fitness = fitness
+    fitness_function = FITNESS_FUNCTIONS[config.task]
+    population = fitness_function(population, config)
+    for ind in population:
+        ind.requires_eval = False
     return population
 
 
@@ -155,7 +120,7 @@ def survivor_selection(population: Population, config: EASettings) -> Population
 
 def create_individual(config: EASettings) -> Individual:
     ind = Individual()
-    ind.genotype = config.genotype.to_json(config.genotype.create_individual())
+    ind.genotype = config.genotype.create_individual().to_json()
     return ind
 
 def read_config_file() -> EASettings:
@@ -170,7 +135,7 @@ def read_config_file() -> EASettings:
     mutation_params = gblock.get("mutation", {}).get("params", {})
     crossover_params = gblock.get("crossover", {}).get("params", {})
     
-    target_robot_path = cfg["task"]["evolve_to_copy"]["target_robot_path"] if task == "evolve_to_copy" else None
+    task_params = cfg["task"].get(task, {}).get("params", {})
 
     genotype = GENOTYPES_MAPPING[gname]
 
@@ -191,7 +156,7 @@ def read_config_file() -> EASettings:
         crossover=crossover,
         crossover_params=crossover_params,
         task=task,
-        target_robot_file_path=Path(target_robot_path),
+        task_params=task_params,
         output_folder=Path(cfg["data"]["output_folder"]),
         db_file_name=cfg["data"]["db_file_name"],
         db_handling=cfg["data"]["db_handling"],
@@ -221,7 +186,7 @@ def main() -> None:
     ea = EA(
         population_list,
         operations=ops,
-        num_of_generations=100,
+        num_of_generations=config.num_of_generations,
     )
 
     ea.run()
@@ -237,7 +202,7 @@ def main() -> None:
 
     fitnesses = []
 
-    for i in range(100):
+    for i in range(config.num_of_generations):
         ea.fetch_population(only_alive=False, best_comes=None, custom_logic=[Individual.time_of_birth==i])
         individuals = ea.population
         avg_fitness = sum(ind.fitness for ind in individuals) / len(individuals) if individuals else 0
@@ -245,11 +210,11 @@ def main() -> None:
         fitnesses.append(avg_fitness)
 
     # Line plot of the fitness
-    plt.plot(range(100), fitnesses, marker='o')
-    plt.title('Average Fitness Over Generations')
+    plt.plot(range(config.num_of_generations), fitnesses, marker='o')
+    plt.title(f'{config.genotype.__name__} - Task: {config.task}')
     plt.xlabel('Generation')
     plt.ylabel('Average Fitness')
-    plt.savefig('average_fitness_over_generations_lsystem.png')
+    plt.savefig(f'avg_fitness_over_generations_{config.genotype.__name__}_{config.task}.png')
     plt.show()
 
 if __name__ == "__main__":
