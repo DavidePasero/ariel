@@ -82,7 +82,7 @@ def crossover(population: Population, config: EASettings) -> Population:
 def mutation(population: Population, config: EASettings) -> Population:
     for ind in population:
         if ind.tags.get("mut", False):
-            genes = config.genotype.from_json(ind.genotype)
+            genes = config.genotype.from_json(ind.genotype)   
             mutated = config.mutation(
                 individual=genes,
                 **config.mutation_params,
@@ -122,7 +122,7 @@ def survivor_selection(population: Population, config: EASettings) -> Population
 
 def create_individual(config: EASettings) -> Individual:
     ind = Individual()
-    ind.genotype = config.genotype.create_individual().to_json()
+    ind.genotype = config.genotype.create_individual(**config.create_individual_params).to_json()
     return ind
 
 def read_config_file() -> EASettings:
@@ -134,6 +134,7 @@ def read_config_file() -> EASettings:
     mutation_name = cfg["run"].get("mutation", gblock["defaults"]["mutation"])
     crossover_name = cfg["run"].get("crossover", gblock["defaults"]["crossover"])
     task = cfg["run"]["task"]
+    create_individual_params = gblock.get("create_individual_params", {})
     mutation_params = gblock.get("mutation", {}).get("params", {})
     crossover_params = gblock.get("crossover", {}).get("params", {})
     
@@ -153,6 +154,7 @@ def read_config_file() -> EASettings:
         num_of_generations=cfg["ec"]["num_of_generations"],
         target_population_size=cfg["ec"]["target_population_size"],
         genotype=genotype,
+        create_individual_params=create_individual_params,
         mutation=mutation,
         mutation_params=mutation_params,
         crossover=crossover,
@@ -207,7 +209,7 @@ def main() -> None:
     ea = EA(
         population_list,
         operations=ops,
-        num_of_generations=100,
+        num_of_generations=config.num_of_generations,
     )
 
     ea.run()
@@ -224,7 +226,7 @@ def main() -> None:
     fitnesses = []
 
     populations = []
-    for i in range(100):
+    for i in range(1, config.num_of_generations + 1):
         ea.fetch_population(only_alive=False, best_comes=None, custom_logic=[Individual.time_of_birth==i])
         individuals = ea.population
         populations.append(individuals)
@@ -233,22 +235,22 @@ def main() -> None:
         fitnesses.append(avg_fitness)
 
     # Line plot of the fitness
-    plt.plot(range(100), fitnesses, marker='o')
+    plt.plot(range(1, config.num_of_generations + 1), fitnesses, marker='o')
     plt.title(f'{config.genotype.__name__} - {config.task}')
     plt.xlabel('Generation')
     plt.ylabel('Average Fitness')
-    plt.savefig(f'average_fitness_over_generations_{config.genotype.__name__}_{config.task}.png')
+    plt.savefig(f'avg_fitness_over_generations_{config.genotype.__name__}_{config.task}.png')
     plt.show()
 
     morphology_analyzer = MorphologyAnalyzer()
     morphology_analyzer.load_target_robots(config.task_params["target_robot_path"])
 
-    #analyze_evolution_videos(morphology_analyzer, populations, lambda x: config.genotype.to_digraph(config.genotype.from_json(x)))
+    # analyze_evolution_videos(morphology_analyzer, populations, lambda x: config.genotype.from_json(x).to_digraph())
 
     # Launch interactive dashboard
     print("\nLaunching Evolution Dashboard...")
 
-    decoder = lambda individual: config.genotype.to_digraph(config.genotype.from_json(individual.genotype))
+    decoder = lambda individual: config.genotype.from_json(individual.genotype).to_digraph()
     run_dashboard(populations, decoder, config)
     
 

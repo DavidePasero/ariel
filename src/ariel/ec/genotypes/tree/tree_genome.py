@@ -507,7 +507,7 @@ class TreeNode:
 
         return result
 
-    def get_all_nodes(self, mode: str = "dfs", exclude_root: bool = True):
+    def get_all_nodes(self, mode: str = "bfs", exclude_root: bool = True):
         """
         Returns all the nodes in the subtree that has self as root node
         """
@@ -519,7 +519,7 @@ class TreeNode:
         else:
             raise ValueError("Invalid mode. Valid modes: dfs, bfs")
 
-    def get_internal_nodes(self, mode: str = "dfs", exclude_root: bool = True):
+    def get_internal_nodes(self, mode: str = "bfs", exclude_root: bool = True):
         """
         Returns all the non-leaf nodes in the subtree that has self as root node
         """
@@ -534,15 +534,20 @@ class TreeNode:
         else:
             raise ValueError("Invalid mode. Valid modes: dfs, bfs")
 
-    def replace_node(self, node_to_remove: TreeNode, node_to_add: TreeNode):
+    def replace_node(self, node_to_remove: TreeNode, node_to_add: TreeNode, mode: str = "bfs"):
         """
         1) Finds the parent of node_to_remove in self subtree
         2) Replaces node_to_remove with node_to_add in the parent's children
         3)
         """
         predicate_is_parent = lambda x: node_to_remove in set(x.children.values())
-        parent = self.find_all_nodes_dfs(predicate=predicate_is_parent)
-        # print("PARENTS LENGTH",len(parent))
+        if mode == "dfs":
+            parent = self.find_all_nodes_dfs(predicate=predicate_is_parent)
+        elif mode == "bfs":
+            parent = self.find_all_nodes_bfs(predicate=predicate_is_parent)
+        else:
+            raise ValueError("Invalid mode. Valid modes: dfs, bfs")
+
         if not parent or len(parent) > 1:
             raise RuntimeError("Father not found, are you sure node_to_remove is in subtree?")
         # We expect a list of len 1 in which there is the parent
@@ -617,8 +622,6 @@ class TreeNode:
             node._set_face(face, child_node)
 
         return node
-
-
 
 def test():
     genome = TreeGenome()

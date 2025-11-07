@@ -27,6 +27,7 @@ class EASettings(BaseSettings):
     num_of_generations: int = 100
     target_population_size: int = 100
     genotype: type[Genotype]
+    create_individual_params: dict = {}
     mutation: Mutation
     mutation_params: dict = {}
     crossover: Crossover

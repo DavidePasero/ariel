@@ -5,14 +5,14 @@
 [run]
 # Choose which genotype profile to use for this run.
 # One of: "integers", "tree", "lsystem", "cppn"
-genotype = "lsystem"
+genotype = "tree"
 
 # Choose which (morphological) task we want to try
 # One of "evolve_to_copy", "evolve_for_novelty"
 task = "evolve_to_copy"
 
 [task.evolve_to_copy.params]
-target_robot_path = "examples/target_robots/small_robot_8.json"
+target_robot_path = "examples/target_robots/large_robot_25.json"
 
 [task.evolve_for_novelty.params]
 n_points_to_consider =  10
@@ -45,9 +45,14 @@ db_handling = "delete"
 # - (Optional) operator params (e.g., rates, alphas)
 # =========================
 
+
+# TREES
+
 [genotypes.tree]
 allowed_mutations  = ["random_subtree_replacement"]
 allowed_crossovers = ["koza_default", "normal"]
+
+[genotypes.tree.create_individual_params]
 
 [genotypes.tree.defaults]
 mutation = "random_subtree_replacement"
@@ -60,9 +65,14 @@ branching_prob = 0.5
 [genotypes.tree.crossover.params]
 koza_internal_node_prob = 0.9
 
+
+# LSYSTEM
+
 [genotypes.lsystem]
 allowed_mutations   = ["mutate_one_point_lsystem"]
 allowed_crossovers  = ["crossover_uniform_rules_lsystem", "crossover_uniform_genes_lsystem"]
+
+[genotypes.lsystem.create_individual_params]
 
 [genotypes.lsystem.defaults]
 mutation = "mutate_one_point_lsystem"
@@ -73,3 +83,22 @@ mutation_rate = 0.5
 
 [genotypes.lsystem.crossover.params]
 mutation_rate = 0.5
+
+
+# CPPN
+[genotypes.cppn]
+allowed_mutations   = ["mutate_cppn"]
+allowed_crossovers  = ["crossover"]
+
+[genotypes.cppn.create_individual_params]
+
+
+[genotypes.cppn.defaults]
+mutation = "mutate_cppn"
+crossover = "crossover"
+
+[genotypes.cppn.mutation.params]
+node_add_rate = 0.5
+conn_add_rate = 0.5
+
+[genotypes.cppn.crossover.params]

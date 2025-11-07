@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ariel.ec.mutations import Mutation
     from ariel.ec.crossovers import Crossover
-import networkx as nx
+    import networkx as nx
 
 class Genotype(ABC):
     """Interface for different genotype types."""

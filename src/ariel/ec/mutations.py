@@ -3,6 +3,7 @@ from __future__ import annotations
 # Standard library
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
+from functools import partial
 from pathlib import Path
 from typing import cast, TYPE_CHECKING, List
 import random
@@ -13,9 +14,14 @@ from pydantic_settings import BaseSettings
 from rich.console import Console
 from rich.traceback import install
 import copy
+
+# Local libraries
+from ariel.ec.genotypes.tree.tree_genome import TreeGenome, TreeNode
 if TYPE_CHECKING:
     from ariel.ec.genotypes.genotype import Genotype
 import ariel.body_phenotypes.robogen_lite.config as pheno_config
+from ariel.ec.genotypes.cppn.node import Node
+from ariel.ec.genotypes.cppn.connection import Connection
 
 # Global constants
 SCRIPT_NAME = __file__.split("/")[-1][:-3]
@@ -47,9 +53,8 @@ class Mutation(ABC):
             if isinstance(val, staticmethod)
         }
 
-    @classmethod
     def __call__(
-        cls,
+        self,
         individual: Genotype,
         **kwargs: dict,
     ) -> Genotype:
@@ -67,14 +72,14 @@ class Mutation(ABC):
         tuple[Genotype, Genotype]
             Two child genotypes resulting from the crossover.
         """
-        if cls.which_mutation in cls.mutations_mapping:
-            return cls.mutations_mapping[cls.which_mutation](
-                individual,
-                **kwargs
-            )
-        else:
-            msg = f"Mutation type '{cls.which_mutation}' not recognized."
+        if self.which_mutation not in self.mutations_mapping:
+            msg = f"Mutation type '{self.which_mutation}' not recognized."
             raise ValueError(msg)
+        return self.mutations_mapping[self.which_mutation](
+            individual,
+            **kwargs
+        )
+
 
 class IntegerMutator(Mutation):
 
@@ -239,7 +244,6 @@ class TreeMutator(Mutation):
     @staticmethod
     def _random_tree(max_depth: int = 2, branching_prob: float = 0.5) -> Genotype:
         """Generate a random tree with pheno_configurable branching probability."""
-        from ariel.ec.genotypes.tree.tree_genome import TreeGenome, TreeNode
         genome = TreeGenome.default_init()  # Start with CORE
         face = RNG.choice(genome.root.available_faces())
         subtree = TreeNode.random_tree_node(max_depth=max_depth - 1, branch_prob=branching_prob)
@@ -254,14 +258,12 @@ class TreeMutator(Mutation):
         branching_prob: float = 0.5,
     ) -> Genotype:
         """Replace a random subtree with a new random subtree."""
-        from ariel.ec.genotypes.tree.tree_genome import TreeNode
         new_individual = copy.copy(individual)
 
         # Collect all nodes in the tree
         all_nodes = new_individual.root.get_all_nodes(exclude_root=True)
 
         if not all_nodes:
-            # print("Tree has no nodes to replace; generating a new random tree.")
             return TreeMutator._random_tree(max_depth=max_subtree_depth, branching_prob=branching_prob)
 
         # Generate a new random subtree
@@ -342,6 +344,123 @@ class LSystemMutator(Mutation):
             else:
                 lsystem.rules[list(rules.keys())[rule_to_change]]=lsystem.rules[list(rules.keys())[rule_to_change]]
         return lsystem
+    
+
+class CPPNMutator(Mutation):
+    def __init__(self, next_innov_id_getter, next_node_id_getter):
+        self.mutate = partial(self._mutate,
+                             next_innov_id_getter=next_innov_id_getter,
+                             next_node_id_getter=next_node_id_getter)
+        self.mutations_mapping = {
+            "mutate_cppn": self.mutate
+        }
+
+    @staticmethod
+    def _mutate(individual: Genotype, 
+               node_add_rate: float, 
+               conn_add_rate: float, 
+               next_innov_id_getter, # function to get/update global innovation ID
+               next_node_id_getter   # function to get/update global node ID
+               ):
+        """
+        Applies structural mutation (add_node or add_connection).
+        """
+        new_individual = None
+
+        if random.random() < conn_add_rate:
+            new_individual = CPPNMutator._mutate_add_connection(individual, next_innov_id_getter)
+        
+        if random.random() < node_add_rate:
+            new_individual = CPPNMutator._mutate_add_node(individual, next_innov_id_getter, next_node_id_getter)
+
+        # new_individual can be None if mutation was not possible
+        return new_individual if new_individual else individual
+
+    @staticmethod
+    def _mutate_add_connection(individual: Genotype, next_innov_id_getter):
+        """
+        Try to add exactly one new acyclic connection.
+        If it can't (duplicate/illegal/would create cycle), return the individual unmodified.
+        """
+        # Need at least two nodes
+        if len(individual.nodes) < 2:
+            return individual
+
+        # If the graph is already cyclic (shouldn't be), bail out without changing anything
+        try:
+            order = individual.get_node_ordering()
+        except Exception:
+            return individual
+
+        rank = {nid: i for i, nid in enumerate(order)}
+
+        # Pick two distinct nodes once
+        a, b = random.sample(list(individual.nodes.keys()), 2)
+        na, nb = individual.nodes[a], individual.nodes[b]
+
+        # Decide a single candidate direction that could be valid.
+        # We require: not from output, not into input, and forward in topo order.
+        candidate = None
+        if na.typ != 'output' and nb.typ != 'input' and rank[a] < rank[b]:
+            candidate = (a, b)
+        elif nb.typ != 'output' and na.typ != 'input' and rank[b] < rank[a]:
+            candidate = (b, a)
+        else:
+            return individual  # this pair can't yield a legal forward edge
+
+        in_id, out_id = candidate
+
+        # Skip if an enabled connection with same endpoints already exists
+        if any(c.enabled and c.in_id == in_id and c.out_id == out_id
+            for c in individual.connections.values()):
+            return individual
+
+        # Propose once; if it fails, do nothing
+        innov = next_innov_id_getter()
+        weight = individual._get_random_weight()
+        conn = Connection(in_id, out_id, weight, enabled=True, innov_id=innov)
+        try:
+            individual.add_connection(conn)  # will reject if it would create a cycle, etc.
+        except ValueError:
+            # invalid for any reason -> leave individual unchanged
+            return individual
+
+        return individual
+
+    @staticmethod
+    def _mutate_add_node(individual: Genotype, next_innov_id_getter, next_node_id_getter):
+        """Split an enabled connection with a new hidden node."""
+        # Only enabled edges are valid split candidates
+        enabled = [c for c in individual.connections.values() if c.enabled]
+        if not enabled:
+            return individual  # no-op
+
+        conn_to_split: Connection = random.choice(enabled)
+
+        # Disable the original
+        conn_to_split.enabled = False
+
+        # Create the new node
+        new_node_id = next_node_id_getter()
+        new_node = Node(
+            _id=new_node_id,
+            typ='hidden',
+            activation=individual._get_random_activation(),
+            bias=individual._get_random_bias(),
+        )
+        individual.add_node(new_node)
+
+        # in -> new (weight 1.0, NEAT style)
+        innov1 = next_innov_id_getter()
+        c1 = Connection(conn_to_split.in_id, new_node_id, 1.0, True, innov1)
+        individual.add_connection(c1)  # will raise if illegal
+
+        # new -> out (preserve original weight)
+        innov2 = next_innov_id_getter()
+        c2 = Connection(new_node_id, conn_to_split.out_id, conn_to_split.weight, True, innov2)
+        individual.add_connection(c2)  # will raise if illegal
+
+        return individual
 
 
 def test() -> None:
