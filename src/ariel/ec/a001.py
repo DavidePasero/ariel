@@ -3,6 +3,8 @@
 # Standard library
 from collections.abc import Hashable, Sequence
 from pathlib import Path
+from typing import Type, Any, Union, Dict
+import json
 
 # Third-party libraries
 import numpy as np
@@ -10,6 +12,7 @@ from rich.console import Console
 from rich.traceback import install
 from sqlalchemy import JSON, Column, Engine
 from sqlmodel import Field, Session, SQLModel, create_engine
+from sqlmodel.main import _TSQLModel
 
 # Local libraries
 
@@ -117,6 +120,23 @@ class Individual(SQLModel, table=True):
     @tags.setter
     def tags(self, tag: dict[JSONType, JSONType]) -> None:
         self.tags_ = {**self.tags_, **tag}
+
+    @classmethod
+    def model_validate(  # type: ignore[override]
+        cls: Type[_TSQLModel],
+        obj: Any,
+        *,
+        strict: Union[bool, None] = None,
+        from_attributes: Union[bool, None] = None,
+        context: Union[Dict[str, Any], None] = None,
+        update: Union[Dict[str, Any], None] = None,
+    ) -> _TSQLModel:
+        # The json needs to be properly loaded before parsing it
+        if hasattr(obj, "genotype_"):
+            obj.genotype_ = json.loads(obj.genotype_)
+        elif isinstance(obj, dict) and "genotype_" in obj:
+            obj["genotype_"] = json.loads(obj.pop("genotype_"))
+        return super().model_validate(obj, strict=strict, from_attributes=from_attributes, context=context, update=update)
 
 
 def main() -> None:

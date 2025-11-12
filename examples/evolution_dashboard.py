@@ -10,6 +10,7 @@ plots from MorphologyAnalyzer with generation selection capabilities.
 import dash
 from dash import dcc, html, Input, Output, callback
 import plotly.graph_objects as go
+import plotly.express as px
 import numpy as np
 import pandas as pd
 from typing import List, Callable, Any
@@ -45,8 +46,11 @@ class EvolutionDashboard:
         # Cache for computed descriptors per generation
         self._descriptor_cache = {}
         
+        # Morphological feature names
+        self.feature_names = ['Branching', 'Limbs', 'Extensiveness', 'Symmetry', 'Proportion', 'Joints']
+        
         # Initialize Dash app
-        self.app = dash.Dash(__name__)
+        self.app = dash.Dash(__name__, suppress_callback_exceptions=True)
         self._setup_layout()
         self._setup_callbacks()
     
@@ -114,8 +118,8 @@ class EvolutionDashboard:
             
             # Tabbed plots section
             html.Div([
-                dcc.Tabs(id='plot-tabs', value='pca-tab', children=[
-                    dcc.Tab(label='PCA Analysis', value='pca-tab'),
+                dcc.Tabs(id='plot-tabs', value='single-feature-tab', children=[
+                    dcc.Tab(label='Single Feature', value='single-feature-tab'),
                     dcc.Tab(label='Fitness Landscapes', value='landscape-tab'),
                     dcc.Tab(label='Fitness Distributions', value='distribution-tab'),
                     dcc.Tab(label='Morphological Diversity', value='diversity-tab'),
@@ -181,6 +185,17 @@ class EvolutionDashboard:
             return fig
         
         @self.app.callback(
+            Output('single-feature-graph', 'figure'),
+            Input('feature-dropdown', 'value'),
+            prevent_initial_call=True
+        )
+        def update_single_feature_plot(feature_idx):
+            """Update single feature plot based on selected feature."""
+            if feature_idx is None:
+                return go.Figure()
+            return self._plot_feature_evolution(feature_idx)
+        
+        @self.app.callback(
             Output('tab-content', 'children'),
             [Input('plot-tabs', 'value'),
              Input('generation-slider', 'value')]
@@ -190,9 +205,7 @@ class EvolutionDashboard:
             # Get data for selected generation
             gen_data = self._get_generation_data(selected_generation)
             
-            if active_tab == 'pca-tab':
-                return self._create_pca_plot(selected_generation)
-            elif active_tab == 'landscape-tab':
+            if active_tab == 'landscape-tab':
                 return self._create_landscape_plot(selected_generation)
             elif active_tab == 'distribution-tab':
                 return self._create_distribution_plot(selected_generation)
@@ -200,15 +213,10 @@ class EvolutionDashboard:
                 return self._create_diversity_plot(selected_generation)
             elif active_tab == 'pairwise-tab':
                 return self._create_pairwise_plot(selected_generation)
+            elif active_tab == 'single-feature-tab':
+                return self._create_single_feature_plot()
             
             return html.Div("Select a tab to view plots")
-    
-    def _create_pca_plot(self, generation: int):
-        """Create PCA analysis plot using PlotlyMorphologyAnalyzer."""
-        self._get_generation_data(generation)  # Load data into analyzer
-        fig = self.analyzer.plot_target_descriptors_pca()
-        fig.update_layout(title_text=f"PCA Analysis - Generation {generation}")
-        return dcc.Graph(figure=fig)
     
     def _create_landscape_plot(self, generation: int):
         """Create fitness landscape plot using PlotlyMorphologyAnalyzer."""
@@ -237,6 +245,132 @@ class EvolutionDashboard:
         fig = self.analyzer.plot_pairwise_feature_landscapes()
         fig.update_layout(title_text=f"Pairwise Feature Landscapes - Generation {generation}")
         return dcc.Graph(figure=fig)
+    
+    def _create_single_feature_plot(self):
+        """Create single feature evolution plot with feature selector."""
+        return html.Div([
+            html.Div([
+                html.Label("Select Feature:", style={'fontWeight': 'bold', 'marginBottom': 10}),
+                dcc.Dropdown(
+                    id='feature-dropdown',
+                    options=[{'label': feature, 'value': i} for i, feature in enumerate(self.feature_names)],
+                    value=0,
+                    style={'marginBottom': 20}
+                )
+            ], style={'width': '300px', 'margin': '0 auto'}),
+            dcc.Graph(id='single-feature-graph')
+        ])
+    
+    def _plot_feature_evolution(self, feature_idx: int):
+        """Plot evolution of a single morphological feature over generations."""
+        if feature_idx is None:
+            return go.Figure()
+        
+        feature_name = self.feature_names[feature_idx]
+        
+        # Compute feature values for all generations
+        generation_data = []
+        
+        for gen_idx in range(len(self.populations)):
+            gen_data = self._get_generation_data(gen_idx)
+            if gen_data['descriptors'].size > 0:
+                # Extract the specific feature for this generation
+                feature_values = gen_data['descriptors'][:, feature_idx]
+                
+                # Find best individual (closest to any target)
+                best_value = feature_values[0]
+                if hasattr(self.analyzer, 'target_descriptors') and len(self.analyzer.target_descriptors) > 0:
+                    # Find individual closest to any target for this feature
+                    min_distance = float('inf')
+                    for target_desc in self.analyzer.target_descriptors:
+                        target_value = target_desc[feature_idx]
+                        distances = np.abs(feature_values - target_value)
+                        closest_idx = np.argmin(distances)
+                        if distances[closest_idx] < min_distance:
+                            min_distance = distances[closest_idx]
+                            best_value = feature_values[closest_idx]
+                
+                generation_data.append({
+                    'generation': gen_idx,
+                    'mean': np.mean(feature_values),
+                    'std': np.std(feature_values),
+                    'min': np.min(feature_values),
+                    'max': np.max(feature_values),
+                    'median': np.median(feature_values),
+                    'best': best_value
+                })
+        
+        if not generation_data:
+            return go.Figure()
+        
+        df = pd.DataFrame(generation_data)
+        
+        fig = go.Figure()
+        
+        # Add mean line with error bands
+        fig.add_trace(go.Scatter(
+            x=df['generation'],
+            y=df['mean'],
+            mode='lines+markers',
+            name='Population Mean',
+            line=dict(color='blue', width=2),
+            marker=dict(size=6)
+        ))
+        
+        # Add standard deviation bands
+        fig.add_trace(go.Scatter(
+            x=df['generation'].tolist() + df['generation'][::-1].tolist(),
+            y=(df['mean'] + df['std']).tolist() + (df['mean'] - df['std'])[::-1].tolist(),
+            fill='tonext',
+            fillcolor='rgba(0,100,80,0.2)',
+            line=dict(color='rgba(255,255,255,0)'),
+            showlegend=False,
+            name='±1 Standard Deviation'
+        ))
+        
+        # Add median line
+        fig.add_trace(go.Scatter(
+            x=df['generation'],
+            y=df['median'],
+            mode='lines+markers',
+            name='Population Median',
+            line=dict(color='purple', width=2, dash='dot'),
+            marker=dict(size=4)
+        ))
+        
+        # Add population best line (closest to target)
+        fig.add_trace(go.Scatter(
+            x=df['generation'],
+            y=df['best'],
+            mode='lines+markers',
+            name='Population Best (Closest to Target)',
+            line=dict(color='green', width=2),
+            marker=dict(size=5, symbol='star')
+        ))
+        
+        # Add target robot values as horizontal lines
+        if hasattr(self.analyzer, 'target_descriptors') and len(self.analyzer.target_descriptors) > 0:
+            for i, (target_desc, target_name) in enumerate(zip(self.analyzer.target_descriptors, self.analyzer.target_names)):
+                target_value = target_desc[feature_idx]
+                fig.add_hline(
+                    y=target_value,
+                    line_dash="solid",
+                    line_color=px.colors.qualitative.Set1[i % len(px.colors.qualitative.Set1)],
+                    line_width=2,
+                    annotation_text=f"Target: {target_name} ({target_value:.2f})",
+                    annotation_position="top right"
+                )
+        
+        fig.update_layout(
+            title=f'{feature_name} Evolution Over Generations',
+            xaxis_title='Generation',
+            yaxis_title=f'{feature_name} Value',
+            height=500,
+            showlegend=True,
+            hovermode='x unified'
+        )
+        
+        return fig
     
     def run(self, host='127.0.0.1', port=8050, debug=True):
         """Run the dashboard server."""

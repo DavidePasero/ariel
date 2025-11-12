@@ -7,7 +7,7 @@ import networkx as nx
 from collections.abc import Callable
 from functools import reduce
 import numpy as np
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Any
 
 from ariel.ec.genotypes.genotype import Genotype
 if TYPE_CHECKING:
@@ -26,13 +26,13 @@ class TreeGenome(Genotype):
         from ariel.ec.crossovers import TreeCrossover
         """Return the crossover operator for tree genomes."""
         return TreeCrossover()
-    
+
     @staticmethod
     def get_mutator_object() -> TreeMutator:
         from ariel.ec.mutations import TreeMutator
         """Return the mutator operator for tree genomes."""
         return TreeMutator()
-    
+
     @staticmethod
     def create_individual(**kwargs: dict) -> TreeGenome:
         """Generate a new TreeGenome individual."""
@@ -181,7 +181,7 @@ class TreeGenome(Genotype):
     def __copy__(self) -> 'TreeGenome':
         """Support for copy.copy()."""
         return self.copy()
-    
+
     # ---------- JSON serialization ----------
 
     @staticmethod
@@ -192,10 +192,10 @@ class TreeGenome(Genotype):
         return TreeGenome(root=root)
 
     @staticmethod
-    def from_json(json_str: str, **kwargs) -> "TreeGenome":
+    def from_json(json_obj: str | Dict[str, Any], **kwargs) -> "TreeGenome":
         """Deserialize from a JSON string."""
-        return TreeGenome.from_dict(json.loads(json_str))
-    
+        return TreeGenome.from_dict(json.loads(json_obj) if isinstance(json_obj, str) else json_obj)
+
     @staticmethod
     def to_dict(robot_genome: "TreeGenome") -> dict:
         """Serialize the genome into a pure-Python dict (JSON-friendly)."""
@@ -247,7 +247,7 @@ class TreeNode:
     @id.setter
     def id(self, value: int | None):
         raise ValueError("ID cannot be changed once set.")
-    
+
     @classmethod
     def random_tree_node(cls, max_depth: int = 1, branch_prob: float = 0.5) -> 'TreeNode' | None:
         """Create a random tree node with random children up to max_depth."""
@@ -576,7 +576,7 @@ class TreeNode:
     def __copy__(self) -> 'TreeNode':
         """Support for copy.copy() - creates deep copy for tree structures."""
         return self.copy()
-    
+
     # ---------- JSON / dict serialization ----------
     def to_dict(self) -> dict:
         """

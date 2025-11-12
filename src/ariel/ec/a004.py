@@ -125,6 +125,8 @@ class EA(AbstractEA):
         *,
         first_generation_id: int | None = None,
         quiet: bool | None = None,
+        db_file_path: str | Path | None = None,
+        db_handling: DB_HANDLING_MODES | None = None,
     ) -> None:
         """
         Initialize an Evolutionary Algorithm (EA) instance.
@@ -163,7 +165,7 @@ class EA(AbstractEA):
         self.target_population_size = config.target_population_size
 
         # Initialisation
-        self.init_database()
+        self.init_database(db_file_path, db_handling)
         self.population = population
         self.commit_population()
         self.console.rule("[blue]EA Initialised")

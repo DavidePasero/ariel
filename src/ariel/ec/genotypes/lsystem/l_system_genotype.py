@@ -126,14 +126,14 @@ class lsystem_element:
         if side in self.allowed_connection:
             is_allowed=True
         return is_allowed
-    
+
     def should_i_explore(self,side):
         res=False
         if self.is_allowed(side)==True:
             if self.has_element(side)==False:
                 res = False
             else:
-                res = True 
+                res = True
         else:
             res = False
         return res
@@ -210,12 +210,12 @@ class LSystemDecoder(Genotype):
     def get_crossover_object() -> LSystemCrossover:
         from ariel.ec.crossovers import LSystemCrossover
         return LSystemCrossover()
-    
+
     @staticmethod
     def get_mutator_object() -> LSystemMutator:
         from ariel.ec.mutations import LSystemMutator
         return LSystemMutator()
-    
+
     @staticmethod
     def create_individual(
         iterations: int = 2,
@@ -247,10 +247,10 @@ class LSystemDecoder(Genotype):
             "max_depth": self.max_depth,
             "verbose": self.verbose,
         }, indent=indent)
-    
+
     @staticmethod
-    def from_json(json_data: str) -> LSystemDecoder:
-        data = json.loads(json_data)
+    def from_json(json_data: str | Dict[str, Any]) -> LSystemDecoder:
+        data = json.loads(json_data) if isinstance(json_data, str) else json_data
         indiv = LSystemDecoder(
             axiom=data["axiom"],
             rules=data["rules"],
@@ -292,7 +292,7 @@ class LSystemDecoder(Genotype):
 
 
     def build_lsystem_structure(self):
-        if self.verbose==1: 
+        if self.verbose==1:
             print("Building L-system structure...")
         if self.expanded_token!=None and self.expanded_token[0]=='C':
             self.structure=lsystem_core()
@@ -346,12 +346,12 @@ class LSystemDecoder(Genotype):
                     case 'addk':
                         if self.verbose==1:
                             print("add BACK")
-                        if turtle.name!="C":    
+                        if turtle.name!="C":
                             if self.verbose==1:
-                                print("ERROR, BACK can only be added to CORE elements, ignored") 
+                                print("ERROR, BACK can only be added to CORE elements, ignored")
                             tk+=1
-                        else:   
-                            if turtle.has_element('BACK')==True: 
+                        else:
+                            if turtle.has_element('BACK')==True:
                                 if self.verbose==1:
                                     print("ERROR, BACK element already exists, ignored")
                                 tk+=1
@@ -391,7 +391,7 @@ class LSystemDecoder(Genotype):
                                 print("ERROR, LEFT connection not allowed, ignored")
                             tk+=1
                         else:
-                            if turtle.has_element('LEFT')==True: 
+                            if turtle.has_element('LEFT')==True:
                                 if self.verbose==1:
                                     print("ERROR, LEFT element already exists, ignored")
                                 tk+=1
@@ -422,7 +422,7 @@ class LSystemDecoder(Genotype):
                                             print("ERROR, unsupported token following ADD, ignored")
                                 else:
                                     if self.verbose==1:
-                                        print("ERROR, no token following ADD, ignored") 
+                                        print("ERROR, no token following ADD, ignored")
                     case 'addr':
                         if self.verbose==1:
                             print("add RIGHT")
@@ -431,11 +431,11 @@ class LSystemDecoder(Genotype):
                                 print("ERROR, RIGHT connection not allowed, ignored")
                             tk+=1
                         else:
-                            if turtle.has_element('RIGHT')==True: 
+                            if turtle.has_element('RIGHT')==True:
                                 if self.verbose==1:
                                     print("ERROR, RIGHT element already exists, ignored")
                                 tk+=1
-                            else:   
+                            else:
                                 rotation = self.get_rotation(self.expanded_token[tk])
                                 if tk+1<len(self.expanded_token):
                                     if self.expanded_token[tk+1] in ['H','B','N']:
@@ -471,11 +471,11 @@ class LSystemDecoder(Genotype):
                                 print("ERROR, TOP connection not allowed, ignored")
                             tk+=1
                         else:
-                            if turtle.has_element('TOP')==True: 
+                            if turtle.has_element('TOP')==True:
                                 if self.verbose==1:
                                     print("ERROR, TOP element already exists, ignored")
                                 tk+=1
-                            else:   
+                            else:
                                 rotation = self.get_rotation(self.expanded_token[tk])
                                 if tk+1<len(self.expanded_token):
                                     if self.expanded_token[tk+1] in ['H','B','N']:
@@ -511,11 +511,11 @@ class LSystemDecoder(Genotype):
                                 print("ERROR, BOTTOM connection not allowed, ignored")
                             tk+=1
                         else:
-                            if turtle.has_element('BOTTOM')==True: 
+                            if turtle.has_element('BOTTOM')==True:
                                 if self.verbose==1:
                                     print("ERROR, BOTTOM element already exists, ignored")
                                 tk+=1
-                            else:   
+                            else:
                                 rotation = self.get_rotation(self.expanded_token[tk])
                                 if tk+1<len(self.expanded_token):
                                     if self.expanded_token[tk+1] in ['H','B','N']:
@@ -651,7 +651,7 @@ class LSystemDecoder(Genotype):
                 eltype = ModuleType.NONE.name
                 match element.back.name:
                     case 'B':
-                        eltype = ModuleType.BRICK.name      
+                        eltype = ModuleType.BRICK.name
                     case 'H':
                         eltype = ModuleType.HINGE.name
                 rotation="DEG_"+str(element.back.rotation)
@@ -665,7 +665,7 @@ class LSystemDecoder(Genotype):
                     eltype = ModuleType.BRICK.name
                 case 'H':
                     eltype = ModuleType.HINGE.name
-            rotation="DEG_"+str(element.right.rotation) 
+            rotation="DEG_"+str(element.right.rotation)
             self.graph.add_node(id_tmp+1,type=eltype,rotation=rotation)
             self.graph.add_edge(id,id_tmp+1,face='RIGHT')
             id_tmp=self.generate_lsystem_graph_element(element.right,id_tmp+1,depth+1)
@@ -684,7 +684,7 @@ class LSystemDecoder(Genotype):
             eltype = ModuleType.NONE.name
             match element.top.name:
                 case 'B':
-                    eltype = ModuleType.BRICK.name  
+                    eltype = ModuleType.BRICK.name
                 case 'H':
                     eltype = ModuleType.HINGE.name
             rotation="DEG_"+str(element.top.rotation)
