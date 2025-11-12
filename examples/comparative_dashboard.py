@@ -8,7 +8,7 @@ data from multiple SQLite databases and displays comparative analysis.
 """
 
 import dash
-from dash import dcc, html, Input, Output, callback
+from dash import dcc, html, Input, Output, State, callback
 import plotly.graph_objects as go
 import plotly.express as px
 import numpy as np
@@ -16,9 +16,11 @@ import pandas as pd
 from pathlib import Path
 import tomllib
 import json
+import os
 from typing import List, Callable, Any, Dict, Tuple
 from rich.console import Console
 from sqlmodel import Session, create_engine, select
+from networkx.readwrite import json_graph
 
 from plotly_morphology_analysis import PlotlyMorphologyAnalyzer
 from ariel.ec.a001 import Individual
@@ -55,8 +57,15 @@ class ComparativeEvolutionDashboard:
         # Cache for computed descriptors per generation per genotype
         self._descriptor_cache = {}
 
+        # Cache for individual data per generation per genotype (for click handling)
+        self._individual_cache = {}
+
         # Morphological feature names
         self.feature_names = ['Branching', 'Limbs', 'Extensiveness', 'Symmetry', 'Proportion', 'Joints']
+
+        # Create dl_robots directory if it doesn't exist
+        self.dl_robots_path = Path("examples/dl_robots")
+        self.dl_robots_path.mkdir(exist_ok=True)
 
         # Color mapping for genotypes
         self.colors = {
@@ -119,6 +128,14 @@ class ComparativeEvolutionDashboard:
             'fitness_scores': analyzer.fitness_scores.copy()
         }
 
+        # Cache individual data for click handling
+        individual_cache_key = f"{genotype_name}_{generation}"
+        self._individual_cache[individual_cache_key] = {
+            'population': population.copy(),
+            'decoder': decoder,
+            'config': config
+        }
+
         return self._descriptor_cache[cache_key]
 
     def _setup_layout(self):
@@ -132,6 +149,20 @@ class ComparativeEvolutionDashboard:
         self.app.layout = html.Div([
             html.H1("Comparative Evolution Dashboard",
                    style={'textAlign': 'center', 'marginBottom': 30}),
+
+            # Status message area
+            html.Div(id='status-message', style={
+                'textAlign': 'center',
+                'marginBottom': 20,
+                'padding': '10px',
+                'backgroundColor': '#f0f0f0',
+                'borderRadius': '5px',
+                'display': 'none'
+            }),
+
+
+
+
 
             # Generation control section
             html.Div([
@@ -176,6 +207,7 @@ class ComparativeEvolutionDashboard:
                     dcc.Tab(label='Single Feature Evolution', value='single-feature-tab'),
                     dcc.Tab(label='Fitness Distributions', value='distribution-tab'),
                     dcc.Tab(label='Morphological Diversity', value='diversity-tab'),
+                    dcc.Tab(label='Individual Analysis', value='individual-tab'),
                 ]),
                 html.Div(id='tab-content')
             ], style={'margin': '20px'})
@@ -286,10 +318,117 @@ class ComparativeEvolutionDashboard:
                 return self._create_distribution_comparison(selected_generation)
             elif active_tab == 'diversity-tab':
                 return self._create_diversity_comparison(selected_generation)
+            elif active_tab == 'individual-tab':
+                return self._create_individual_analysis(selected_generation)
             elif active_tab == 'single-feature-tab':
                 return self._create_single_feature_plot()
 
             return html.Div("Select a tab to view plots")
+
+        # Direct click handling - save robot immediately when clicked
+        @self.app.callback(
+            [Output('status-message', 'children'),
+             Output('status-message', 'style')],
+            Input('individual-scatter', 'clickData'),
+            State('generation-slider', 'value'),
+            prevent_initial_call=True
+        )
+        def handle_direct_click(clickData, generation):
+            """Handle direct click on scatter plot and save robot immediately."""
+            print(f"Direct click detected! clickData: {clickData}")  # Debug print
+
+            if not clickData or 'points' not in clickData:
+                return "", {'display': 'none'}
+
+            try:
+                # Get the clicked point index
+                point = clickData['points'][0]
+                point_index = point.get('pointIndex', point.get('pointNumber', 0))
+
+                print(f"Point index: {point_index}")  # Debug print
+
+                # Get the individual from click data mapping
+                if not hasattr(self, '_click_data') or point_index not in self._click_data:
+                    return "Error: Click data not found", {
+                        'display': 'block',
+                        'backgroundColor': '#ffcccc',
+                        'color': 'red',
+                        'textAlign': 'center',
+                        'marginBottom': 20,
+                        'padding': '10px',
+                        'borderRadius': '5px'
+                    }
+
+                click_info = self._click_data[point_index]
+                genotype_name = click_info['genotype']
+                individual_index = click_info['individual_index']
+
+                print(f"Saving robot for genotype: {genotype_name}, individual: {individual_index}")  # Debug print
+
+                # Get the individual data
+                cache_key = f"{genotype_name}_{generation}"
+                if cache_key not in self._individual_cache:
+                    return "Error: Individual data not found", {
+                        'display': 'block',
+                        'backgroundColor': '#ffcccc',
+                        'color': 'red',
+                        'textAlign': 'center',
+                        'marginBottom': 20,
+                        'padding': '10px',
+                        'borderRadius': '5px'
+                    }
+
+                individual_data = self._individual_cache[cache_key]
+                population = individual_data['population']
+                decoder = individual_data['decoder']
+
+                if individual_index >= len(population):
+                    return f"Error: Individual index {individual_index} out of range", {
+                        'display': 'block',
+                        'backgroundColor': '#ffcccc',
+                        'color': 'red',
+                        'textAlign': 'center',
+                        'marginBottom': 20,
+                        'padding': '10px',
+                        'borderRadius': '5px'
+                    }
+
+                # Get the individual and convert to robot graph
+                individual = population[individual_index]
+                robot_graph = decoder(individual)
+
+                # Save robot as JSON
+                robot_data = json_graph.node_link_data(robot_graph, edges="edges")
+
+                # Save to file
+                #filename = f"robot_{genotype_name}_gen{generation}_ind{individual_index}_fit{individual.fitness:.3f}.json"
+                filename = "robot.json"
+                filepath = self.dl_robots_path / filename
+
+                with open(filepath, 'w') as f:
+                    json.dump(robot_data, f, indent=2)
+
+                return f"Robot saved: {filename}", {
+                    'display': 'block',
+                    'backgroundColor': '#ccffcc',
+                    'color': 'green',
+                    'textAlign': 'center',
+                    'marginBottom': 20,
+                    'padding': '10px',
+                    'borderRadius': '5px'
+                }
+
+            except Exception as e:
+                print(f"Error in click handler: {e}")  # Debug print
+                return f"Error saving robot: {str(e)}", {
+                    'display': 'block',
+                    'backgroundColor': '#ffcccc',
+                    'color': 'red',
+                    'textAlign': 'center',
+                    'marginBottom': 20,
+                    'padding': '10px',
+                    'borderRadius': '5px'
+                }
 
     def _create_single_feature_plot(self):
         """Create single feature evolution comparison with feature selector."""
@@ -485,6 +624,72 @@ class ComparativeEvolutionDashboard:
             return [np.std(descriptors[:, i]) for i in range(len(self.feature_names))]
         except:
             return []
+
+    def _create_individual_analysis(self, generation: int):
+        """Create individual analysis scatter plot for selected generation."""
+        fig = go.Figure()
+
+        # Store individual indices for click handling
+        self._click_data = {}
+        current_index = 0
+
+        for genotype_name in self.genotype_names:
+            gen_data = self._get_generation_data(genotype_name, generation)
+
+            if gen_data['descriptors'].size == 0:
+                continue
+
+            descriptors = gen_data['descriptors']
+            fitness_scores = gen_data['fitness_scores']
+            color = self.colors.get(genotype_name, '#1f77b4')
+
+            # Use first two morphological features for scatter plot
+            x_values = descriptors[:, 0]  # Branching
+            y_values = descriptors[:, 1]  # Limbs
+
+            # Store mapping from plot index to genotype and individual index
+            for i in range(len(x_values)):
+                self._click_data[current_index] = {
+                    'genotype': genotype_name,
+                    'individual_index': i,
+                    'generation': generation
+                }
+                current_index += 1
+
+            # Create scatter plot
+            fig.add_trace(go.Scatter(
+                x=x_values,
+                y=y_values,
+                mode='markers',
+                name=genotype_name,
+                marker=dict(
+                    color=fitness_scores[0] if len(fitness_scores) > 0 else [0] * len(x_values),
+                    colorscale='Viridis',
+                    size=8,
+                    opacity=0.7,
+                    colorbar=dict(title='Fitness') if genotype_name == self.genotype_names[0] else None
+                ),
+                hovertemplate=f'<b>{genotype_name}</b><br>' +
+                             'Branching: %{x:.3f}<br>' +
+                             'Limbs: %{y:.3f}<br>' +
+                             'Fitness: %{marker.color:.3f}<br>' +
+                             '<extra></extra>'
+            ))
+
+        fig.update_layout(
+            title=f'Individual Analysis - Generation {generation}<br><sub>Click on any point to download robot</sub>',
+            xaxis_title='Branching',
+            yaxis_title='Limbs',
+            height=600,
+            showlegend=True
+        )
+
+        return dcc.Graph(
+            id='individual-scatter',
+            figure=fig
+        )
+
+
 
     def run(self, host='127.0.0.1', port=8051, debug=True):
         """Run the dashboard server."""

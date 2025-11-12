@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ariel.ec.mutations import CPPNMutator
     from ariel.ec.crossovers import CPPNCrossover
-    
+
 from ariel.body_phenotypes.robogen_lite.config import (
     NUM_OF_ROTATIONS,
     NUM_OF_TYPES_OF_MODULES,
@@ -26,8 +26,8 @@ class CPPN_genotype(Genotype):
     """A genome in the NEAT algorithm."""
 
     id_manager = IdManager(
-        node_start=NUM_CPPN_INPUTS + NUM_CPPN_OUTPUTS - 1, 
-        innov_start=NUM_CPPN_INPUTS * NUM_CPPN_OUTPUTS - 1  # we have 78 conns (6 inputs * 13 outputs) --> last ID is 77 
+        node_start=NUM_CPPN_INPUTS + NUM_CPPN_OUTPUTS - 1,
+        innov_start=NUM_CPPN_INPUTS * NUM_CPPN_OUTPUTS - 1  # we have 78 conns (6 inputs * 13 outputs) --> last ID is 77
     )
 
     def __init__(self,
@@ -43,7 +43,7 @@ class CPPN_genotype(Genotype):
     @staticmethod
     def _get_random_weight():
         return random.uniform(-1.0, 1.0)
-    
+
     # Helper method for random biases
     @staticmethod
     def _get_random_bias():
@@ -53,56 +53,56 @@ class CPPN_genotype(Genotype):
     def _get_random_activation():
         """Selects a random activation function from the available list."""
         return random.choice(list(ACTIVATION_FUNCTIONS.values()))
-        
+
     def copy(self):
         """Returns a new CPPN_genotype object with identical, deep-copied gene sets."""
-        
+
         # Deep copy nodes (Node class has a copy method)
         new_nodes = {
             _id: node.copy()
             for _id, node in self.nodes.items()
         }
-        
+
         # Deep copy connections (Connection class has a copy method)
         new_connections = {
-            innov_id: conn.copy() 
+            innov_id: conn.copy()
             for innov_id, conn in self.connections.items()
         }
-        
+
         # Return a new CPPN_genotype instance
         return CPPN_genotype(new_nodes, new_connections, self.fitness)
 
     @classmethod
-    def random(cls, 
-               num_inputs: int, 
-               num_outputs: int, 
-               next_node_id: int, 
+    def random(cls,
+               num_inputs: int,
+               num_outputs: int,
+               next_node_id: int,
                next_innov_id: int):
         """
         Creates a new, randomly initialized CPPN_genotype with a base topology.
         Initial topology is fully connected inputs to outputs.
         """
-        
+
         nodes = {}
         connections = {}
-        
+
         # 1. Create Input Nodes
         for i in range(num_inputs):
             node = Node(_id=i, typ='input', activation=None, bias=0.0)
             nodes[i] = node
-            
+
         # 2. Create Output Nodes (starting ID after inputs)
         current_node_id = num_inputs
         for _ in range(num_outputs):
             node = Node(
-                _id=current_node_id, 
-                typ='output', 
-                activation=DEFAULT_ACTIVATION, 
+                _id=current_node_id,
+                typ='output',
+                activation=DEFAULT_ACTIVATION,
                 bias=cls._get_random_bias()
             )
             nodes[current_node_id] = node
             current_node_id += 1
-            
+
         # 3. Create Connections (Fully connect inputs to outputs)
         current_innov_id = next_innov_id
         for in_id in range(num_inputs):
@@ -119,13 +119,13 @@ class CPPN_genotype(Genotype):
         """Return the crossover operator for this genotype type."""
         from ariel.ec.crossovers import CPPNCrossover
         return CPPNCrossover()
-    
+
     @staticmethod
     def get_mutator_object() -> CPPNMutator:
         """Return the mutator operator for this genotype type."""
         from ariel.ec.mutations import CPPNMutator
         return CPPNMutator(CPPN_genotype.id_manager.get_next_innov_id, CPPN_genotype.id_manager.get_next_node_id)
-    
+
     @staticmethod
     def create_individual(**kwargs: dict) -> "Genotype":
         """Generate a new individual of this genotype type."""
@@ -134,7 +134,7 @@ class CPPN_genotype(Genotype):
         num_outputs = NUM_CPPN_OUTPUTS
         next_node_id = CPPN_genotype.id_manager.get_next_node_id()
         next_innov_id = CPPN_genotype.id_manager.get_next_innov_id()
-        
+
         return CPPN_genotype.random(num_inputs, num_outputs, next_node_id, next_innov_id)
 
 
@@ -154,14 +154,14 @@ class CPPN_genotype(Genotype):
         if self._would_create_cycle(in_id, out_id):
             raise ValueError(f"Adding {in_id}->{out_id} would create a cycle.")
         self.connections[connection.innov_id] = connection
-    
+
     def add_node(self, node: Node):
         """Adds a node gene to the CPPN_genotype."""
         if node not in self.nodes.values():
             self.nodes[node._id] = node
         else:
             raise ValueError("Node already exists in CPPN_genotype.")
-        
+
     def get_node_ordering(self):
         """
         Calculates a topological sort order for feed-forward activation using Kahn's algorithm.
@@ -182,9 +182,9 @@ class CPPN_genotype(Genotype):
         # 2. Initialize a queue with all nodes that have no incoming connections.
         # These are the network's starting points (i.e., the input nodes).
         queue = [node_id for node_id in self.nodes if in_degree[node_id] == 0]
-        
+
         sorted_order = []
-        
+
         # 3. Process nodes in the queue.
         while queue:
             # Dequeue a node that is ready to be evaluated.
@@ -203,20 +203,20 @@ class CPPN_genotype(Genotype):
         if len(sorted_order) != len(self.nodes):
             # For a feed-forward CPPN, this indicates an issue.
             raise Exception("A cycle was detected in the CPPN_genotype's graph, cannot create a feed-forward order.")
-            
+
         return sorted_order
-    
+
     def activate(self, inputs: list[float]) -> list[float]:
         """
         Activates the neural network by performing a forward pass with a given list of inputs.
         """
-        
+
         node_outputs = {}
         ordered_node_ids = self.get_node_ordering()
-        
+
         # 1. Initialize Input Node Outputs
         input_node_ids = [_id for _id, node in self.nodes.items() if node.typ == 'input']
-        
+
         if len(inputs) != len(input_node_ids):
             raise ValueError(f"Expected {len(input_node_ids)} inputs, got {len(inputs)}")
 
@@ -227,13 +227,13 @@ class CPPN_genotype(Genotype):
         # 2. Activate Hidden and Output Nodes in order
         for node_id in ordered_node_ids:
             node = self.nodes[node_id]
-            
+
             # Skip input nodes
             if node.typ == 'input':
                 continue
 
             weighted_sum = 0.0
-            
+
             # Find all connections where this node is the output
             for conn in self.connections.values():
                 if conn.out_id == node_id and conn.enabled:
@@ -241,27 +241,27 @@ class CPPN_genotype(Genotype):
                     # Ensure the input node has already been activated/initialized
                     if in_id in node_outputs:
                         weighted_sum += node_outputs[in_id] * conn.weight
-            
+
             # Add bias
             weighted_sum += node.bias
-    
+
             # Apply activation function
             node_outputs[node_id] = node.activation(weighted_sum)
 
         # 3. Collect Output Values from Output Nodes
         output_node_ids = [_id for _id, node in self.nodes.items() if node.typ == 'output']
-        
+
         return [node_outputs[_id] for _id in output_node_ids]
-    
+
 
     def to_digraph(self: "Genotype", **kwargs: dict) -> nx.DiGraph:
         """Convert the genotype to a directed graph representation."""
         decoder = MorphologyDecoderBestFirst(
-            cppn_genome=self, 
+            cppn_genome=self,
             max_modules=MAX_MODULES
         )
         return decoder.decode()
-    
+
     def _would_create_cycle(self, src_id: int, dst_id: int) -> bool:
         if src_id == dst_id:
             return True
@@ -282,7 +282,7 @@ class CPPN_genotype(Genotype):
             seen.add(u)
             stack.extend(adj.get(u, []))
         return False
-    
+
 
 
     # --- JSON Serialization Methods --- #
@@ -317,10 +317,10 @@ class CPPN_genotype(Genotype):
         return json.dumps(data)
 
     @staticmethod
-    def from_json(json_data: str, **kwargs) -> "Genotype":
+    def from_json(json_data: str | dict, **kwargs) -> "Genotype":
         """Deserialize genotype from a JSON string produced by to_json()."""
 
-        obj = json.loads(json_data)
+        obj = json.loads(json_data) if isinstance(json_data, str) else json_data
 
         # Rebuild nodes
         nodes: dict[int, Node] = {}

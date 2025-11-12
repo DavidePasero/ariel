@@ -5,7 +5,7 @@
 [run]
 # Choose which genotype profile to use for this run.
 # One of: "integers", "tree", "lsystem", "cppn"
-genotype = "cppn"
+genotype = "lsystem"
 
 # Choose which (morphological) task we want to try
 # One of "evolve_to_copy", "evolve_for_novelty"
@@ -33,7 +33,7 @@ target_population_size = 100
 [data]
 # Paths can be absolute or relative to the working directory
 output_folder = "__data__"
-db_file_name = "cppn"
+db_file_name = "lsystem"
 # db_handling modes: "delete" | "reuse" | "migrate" (adjust to your app’s enum)
 db_handling = "delete"
 
