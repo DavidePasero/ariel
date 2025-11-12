@@ -27,7 +27,7 @@ from ariel.body_phenotypes.robogen_lite.config import (
 from ariel.body_phenotypes.robogen_lite.constructor import (
     construct_mjspec_from_graph,
 )
-from ariel.body_phenotypes.robogen_lite.decoders.l_system_genotype import (
+from ariel.ec.genotypes.lsystem.l_system_genotype import (
     load_graph_from_json,
 )
 
