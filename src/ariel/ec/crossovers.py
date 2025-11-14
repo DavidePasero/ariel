@@ -282,9 +282,9 @@ class LSystemCrossover(Crossover):
                 new_token= rules_parent1[i] + " " + rules_parent1[i+1]
                 enh_parent1.append(new_token)
                 i+=1
-            if rules_parent1[i][:4] in ['movf','movk','movl','movr','movb','movt']:
+            elif rules_parent1[i][:4] in ['movf','movk','movl','movr','movb','movt']:
                 enh_parent1.append(rules_parent1[i])
-            if rules_parent1[i]=='C':
+            elif rules_parent1[i]=='C':
                 enh_parent1.append(rules_parent1[i])
             i+=1 
         i = 0
@@ -293,9 +293,9 @@ class LSystemCrossover(Crossover):
                 new_token= rules_parent2[i] + " " + rules_parent2[i+1]
                 enh_parent2.append(new_token)
                 i+=1
-            if rules_parent2[i][:4] in ['movf','movk','movl','movr','movb','movt']:
+            elif rules_parent2[i][:4] in ['movf','movk','movl','movr','movb','movt']:
                 enh_parent2.append(rules_parent2[i])
-            if rules_parent2[i]=='C':
+            elif rules_parent2[i]=='C':
                 enh_parent2.append(rules_parent2[i])
             i+=1 
         r_offspring1=""
@@ -333,9 +333,9 @@ class LSystemCrossover(Crossover):
                 new_token= rules_parent1[i] + " " + rules_parent1[i+1]
                 enh_parent1.append(new_token)
                 i+=1
-            if rules_parent1[i][:4] in ['movf','movk','movl','movr','movb','movt']:
+            elif rules_parent1[i][:4] in ['movf','movk','movl','movr','movb','movt']:
                 enh_parent1.append(rules_parent1[i])
-            if rules_parent1[i]=='B':
+            elif rules_parent1[i]=='B':
                 enh_parent1.append(rules_parent1[i])
             i+=1 
         i = 0
@@ -344,9 +344,9 @@ class LSystemCrossover(Crossover):
                 new_token= rules_parent2[i] + " " + rules_parent2[i+1]
                 enh_parent2.append(new_token)
                 i+=1
-            if rules_parent2[i][:4] in ['movf','movk','movl','movr','movb','movt']:
+            elif rules_parent2[i][:4] in ['movf','movk','movl','movr','movb','movt']:
                 enh_parent2.append(rules_parent2[i])
-            if rules_parent2[i]=='B':
+            elif rules_parent2[i]=='B':
                 enh_parent2.append(rules_parent2[i])
             i+=1 
         r_offspring1=""
@@ -384,9 +384,9 @@ class LSystemCrossover(Crossover):
                 new_token= rules_parent1[i] + " " + rules_parent1[i+1]
                 enh_parent1.append(new_token)
                 i+=1
-            if rules_parent1[i][:4] in ['movf','movk','movl','movr','movb','movt']:
+            elif rules_parent1[i][:4] in ['movf','movk','movl','movr','movb','movt']:
                 enh_parent1.append(rules_parent1[i])
-            if rules_parent1[i]=='H':
+            elif rules_parent1[i]=='H':
                 enh_parent1.append(rules_parent1[i])
             i+=1 
         i = 0
@@ -395,9 +395,9 @@ class LSystemCrossover(Crossover):
                 new_token= rules_parent2[i] + " " + rules_parent2[i+1]
                 enh_parent2.append(new_token)
                 i+=1
-            if rules_parent2[i][:4] in ['movf','movk','movl','movr','movb','movt']:
+            elif rules_parent2[i][:4] in ['movf','movk','movl','movr','movb','movt']:
                 enh_parent2.append(rules_parent2[i])
-            if rules_parent2[i]=='H':
+            elif rules_parent2[i]=='H':
                 enh_parent2.append(rules_parent2[i])
             i+=1 
         r_offspring1=""
@@ -435,9 +435,9 @@ class LSystemCrossover(Crossover):
                 new_token= rules_parent1[i] + " " + rules_parent1[i+1]
                 enh_parent1.append(new_token)
                 i+=1
-            if rules_parent1[i][:4] in ['movf','movk','movl','movr','movb','movt']:
+            elif rules_parent1[i][:4] in ['movf','movk','movl','movr','movb','movt']:
                 enh_parent1.append(rules_parent1[i])
-            if rules_parent1[i]=='N':
+            elif rules_parent1[i]=='N':
                 enh_parent1.append(rules_parent1[i])
             i+=1 
         i = 0
@@ -446,9 +446,9 @@ class LSystemCrossover(Crossover):
                 new_token= rules_parent2[i] + " " + rules_parent2[i+1]
                 enh_parent2.append(new_token)
                 i+=1
-            if rules_parent2[i][:4] in ['movf','movk','movl','movr','movb','movt']:
+            elif rules_parent2[i][:4] in ['movf','movk','movl','movr','movb','movt']:
                 enh_parent2.append(rules_parent2[i])
-            if rules_parent2[i]=='N':
+            elif rules_parent2[i]=='N':
                 enh_parent2.append(rules_parent2[i])
             i+=1 
         r_offspring1=""

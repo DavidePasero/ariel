@@ -25,6 +25,7 @@ import re
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, TYPE_CHECKING
 from enum import Enum
+import random
 
 # Third-party libraries
 import matplotlib.pyplot as plt
@@ -221,19 +222,78 @@ class LSystemDecoder(Genotype):
         iterations: int = 2,
         max_elements: int = 32,
         max_depth: int = 8,
+        start_verbosity: int = 6,
+        add_temperature=0.5,
+        none_temperature=0.2,
         verbose: int = 0,
         **kwargs: dict
     ) -> LSystemDecoder:
         base_rules = {"C": "C", "B": "B", "H": "H", "N": "N"}
+        axiom = "C"
+        rules = {}
+        nb_item_C=random.choice(range(4,start_verbosity))
+        nb_item_H=random.choice(range(2,start_verbosity))
+        nb_item_B=random.choice(range(2,start_verbosity))
+        nb_item_N=random.choice(range(2,start_verbosity))
+        rule_string_C = "C"
+        for i in range(0,nb_item_C):
+            what_to_add = random.choices(['add','mov'],weights=[add_temperature,1-add_temperature])[0]  
+            match what_to_add:
+                case 'add':
+                    operator = random.choice(['addf','addk','addl','addr','addb','addt'])
+                    rotation = random.choice([0,45,90,135,180,225,270])
+                    op_to_add=operator+"("+str(rotation)+")"
+                    item_to_add=random.choices(['B','H','N'],weights=[(1-none_temperature)/2,(1-none_temperature)/2,none_temperature])[0]
+                    rule_string_C+=" "+op_to_add+" "+item_to_add
+                case 'mov':
+                    operator = random.choice(['movf','movk','movl','movr','movb','movt'])
+                    rule_string_C+=" "+operator
+        rule_string_B="B"
+        for i in range(0,nb_item_B):
+            what_to_add = random.choices(['add','mov'],weights=[add_temperature,1-add_temperature])[0] 
+            match what_to_add:
+                case 'add':
+                    operator = random.choice(['addf','addk','addl','addr','addb','addt'])
+                    rotation = random.choice([0,45,90,135,180,225,270])
+                    op_to_add=operator+"("+str(rotation)+")"
+                    item_to_add=random.choices(['B','H','N'],weights=[(1-none_temperature)/2,(1-none_temperature)/2,none_temperature])[0]
+                    rule_string_B+=" "+op_to_add+" "+item_to_add
+                case 'mov':
+                    operator = random.choice(['movf','movk','movl','movr','movb','movt'])
+                    rule_string_B+=" "+operator
+        rule_string_H="H"
+        for i in range(0,nb_item_H):
+            what_to_add = random.choices(['add','mov'],weights=[add_temperature,1-add_temperature])[0] 
+            match what_to_add:
+                case 'add':
+                    operator = random.choice(['addf','addk','addl','addr','addb','addt'])
+                    rotation = random.choice([0,45,90,135,180,225,270])
+                    op_to_add=operator+"("+str(rotation)+")"
+                    item_to_add=random.choices(['B','H','N'],weights=[(1-none_temperature)/2,(1-none_temperature)/2,none_temperature])[0]
+                    rule_string_H+=" "+op_to_add+" "+item_to_add
+                case 'mov':
+                    operator = random.choice(['movf','movk','movl','movr','movb','movt'])
+                    rule_string_H+=" "+operator
+        rule_string_N="N"
+        for i in range(0,nb_item_N):
+            what_to_add = random.choices(['add','mov'],weights=[add_temperature,1-add_temperature])[0] 
+            match what_to_add:
+                case 'add':
+                    operator = random.choice(['addf','addk','addl','addr','addb','addt'])
+                    rotation = random.choice([0,45,90,135,180,225,270])
+                    op_to_add=operator+"("+str(rotation)+")"
+                    item_to_add=random.choices(['B','H','N'],weights=[(1-none_temperature)/2,(1-none_temperature)/2,none_temperature])[0]
+                    rule_string_N+=" "+op_to_add+" "+item_to_add
+                case 'mov':
+                    operator = random.choice(['movf','movk','movl','movr','movb','movt'])
+                    rule_string_N+=" "+operator
+        rules['C']=rule_string_C
+        rules['B']=rule_string_B
+        rules['H']=rule_string_H
+        rules['N']=rule_string_N
+        it = random.choice(range(1,iterations))
+        indiv = LSystemDecoder(axiom,rules,it,max_elements=max_elements,max_depth=max_depth,verbose=verbose)
 
-        indiv = LSystemDecoder(
-            axiom="C",
-            rules=base_rules,
-            iterations=iterations,
-            max_elements=max_elements,
-            max_depth=max_depth,
-            verbose=verbose,
-        )
         # Materialize expanded_token, structure, and graph
         indiv.refresh()
         return indiv
