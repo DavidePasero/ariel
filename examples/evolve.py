@@ -1,26 +1,28 @@
 # Standard library
 from __future__ import annotations
+
 import random
-from collections.abc import Callable
-from pathlib import Path
 import tomllib
-from typing import Literal
+from collections.abc import Callable
 from functools import partial
+from pathlib import Path
+from typing import Literal
+
 import matplotlib.pyplot as plt
+import numpy as np
+from ea_settings import EASettings
+from evolution_dashboard import run_dashboard
 
 # Third-party libraries
-from fitness_functions import FITNESS_FUNCTIONS
-import numpy as np
+from fitness_functions import FITNESS_FUNCTIONS, PREPROCESSING_FUNCTIONS
+from morphology_fitness_analysis import MorphologyAnalyzer
 from rich.console import Console
 from rich.traceback import install
 
 # Local libraries
 from ariel.ec.a001 import Individual
-from ariel.ec.a004 import EAStep, EA
+from ariel.ec.a004 import EA, EAStep
 from ariel.ec.genotypes.genotype_mapping import GENOTYPES_MAPPING
-from morphology_fitness_analysis import MorphologyAnalyzer
-from ea_settings import EASettings
-from evolution_dashboard import run_dashboard
 
 # Global constants
 SEED = 42
@@ -35,8 +37,16 @@ RNG = np.random.default_rng(SEED)
 type Population = list[Individual]
 type PopulationFunc = Callable[[Population], Population]
 
+
+def preprocess(config: EASettings) -> None:
+    """Preprocess function to load target robots into morphology analyzer."""
+    PREPROCESSING_FUNCTIONS[config.task](config)
+
+
 # ------------------------ EA STEPS ------------------------ #
-def parent_selection(population: Population, config: EASettings) -> Population:
+def parent_selection(
+    population: Population, config: EASettings, ea: EA | None = None
+) -> Population:
     random.shuffle(population)
     for idx in range(0, len(population) - 1, 2):
         ind_i = population[idx]
@@ -52,9 +62,11 @@ def parent_selection(population: Population, config: EASettings) -> Population:
     return population
 
 
-def crossover(population: Population, config: EASettings) -> Population:
+def crossover(
+    population: Population, config: EASettings, ea: EA | None = None
+) -> Population:
     parents = [ind for ind in population if ind.tags.get("ps", False)]
-    for idx in range(0, len(parents)-1, 2):
+    for idx in range(0, len(parents) - 1, 2):
         parent_i = parents[idx]
         parent_j = parents[idx + 1]
         genotype_i, genotype_j = config.crossover(
@@ -79,7 +91,9 @@ def crossover(population: Population, config: EASettings) -> Population:
     return population
 
 
-def mutation(population: Population, config: EASettings) -> Population:
+def mutation(
+    population: Population, config: EASettings, ea: EA | None = None
+) -> Population:
     for ind in population:
         if ind.tags.get("mut", False):
             genes = config.genotype.from_json(ind.genotype)
@@ -92,15 +106,19 @@ def mutation(population: Population, config: EASettings) -> Population:
     return population
 
 
-def evaluate(population: Population, config: EASettings) -> Population:
+def evaluate(
+    population: Population, config: EASettings, ea: EA | None = None
+) -> Population:
     fitness_function = FITNESS_FUNCTIONS[config.task]
-    population = fitness_function(population, config)
+    population = fitness_function(population, config, ea)
     for ind in population:
         ind.requires_eval = False
     return population
 
 
-def survivor_selection(population: Population, config: EASettings) -> Population:
+def survivor_selection(
+    population: Population, config: EASettings, ea: EA | None = None
+) -> Population:
     random.shuffle(population)
     current_pop_size = len(population)
     for idx in range(len(population)):
@@ -120,24 +138,26 @@ def survivor_selection(population: Population, config: EASettings) -> Population
     return population
 
 
-def create_individual(config: EASettings) -> Individual:
-    ind = Individual()
-    ind.genotype = config.genotype.create_individual().to_json()
-    return ind
+# ------------------------ END EA STEPS ------------------------ #
+
 
 def read_config_file() -> EASettings:
     cfg = tomllib.loads(Path("examples/config.toml").read_text())
-
     # Resolve the active operators from the chosen genotype profile
     gname = cfg["run"]["genotype"]
     gblock = cfg["genotypes"][gname]
     mutation_name = cfg["run"].get("mutation", gblock["defaults"]["mutation"])
-    crossover_name = cfg["run"].get("crossover", gblock["defaults"]["crossover"])
+    crossover_name = cfg["run"].get(
+        "crossover", gblock["defaults"]["crossover"]
+    )
     task = cfg["run"]["task"]
     mutation_params = gblock.get("mutation", {}).get("params", {})
     crossover_params = gblock.get("crossover", {}).get("params", {})
-    
+
     task_params = cfg["task"].get(task, {}).get("params", {})
+    morphology_analyzer = MorphologyAnalyzer(
+        metric=task_params.get("distance_metric", "descriptor"),
+    )
 
     genotype = GENOTYPES_MAPPING[gname]
 
@@ -159,55 +179,73 @@ def read_config_file() -> EASettings:
         crossover_params=crossover_params,
         task=task,
         task_params=task_params,
+        morphology_analyzer=morphology_analyzer,
         output_folder=Path(cfg["data"]["output_folder"]),
         db_file_name=cfg["data"]["db_file_name"],
         db_handling=cfg["data"]["db_handling"],
-        db_file_path=Path(cfg["data"]["output_folder"]) / cfg["data"]["db_file_name"],
+        db_file_path=Path(cfg["data"]["output_folder"])
+        / cfg["data"]["db_file_name"],
     )
     return settings
-    
+
+
+def create_individual(config: EASettings) -> Individual:
+    ind = Individual()
+    ind.genotype = config.genotype.create_individual().to_json()
+    return ind
+
 
 # Example usage
-def analyze_evolution_videos(analyzer: MorphologyAnalyzer, populations: list[Population], decoder: Callable) -> None:
+def analyze_evolution_videos(
+    analyzer: MorphologyAnalyzer,
+    populations: list[Population],
+    decoder: Callable,
+) -> None:
     """Create evolution videos for different visualizations."""
 
     analyzer.create_evolution_video(
         populations=populations,
         decoder=decoder,
         plot_method_name="plot_fitness_distributions",
-        video_filename="videos/fitness_distributions.mp4"
+        video_filename="videos/fitness_distributions.mp4",
     )
 
     analyzer.create_evolution_video(
         populations=populations,
         decoder=decoder,
         plot_method_name="plot_pairwise_feature_landscapes",
-        video_filename="videos/pairwise_feature_landscapes.mp4"
+        video_filename="videos/pairwise_feature_landscapes.mp4",
     )
 
 
 def main() -> None:
     """Entry point."""
     config = read_config_file()
+    preprocess(config)
     # Create initial population
-    population_list = [create_individual(config) for _ in range(10)]
-    population_list = evaluate(population_list, config)
+    population_list = [
+        create_individual(config) for _ in range(config.target_population_size)
+    ]
+    for ind in population_list:
+        ind.fitness = -float("inf")
 
     # Create EA steps
+    # Initialize EA
 
     ops = [
         EAStep("parent_selection", partial(parent_selection, config=config)),
-        EAStep("crossover",        partial(crossover,        config=config)),
-        EAStep("mutation",         partial(mutation,         config=config)),
-        EAStep("evaluation",       partial(evaluate,         config=config)),
-        EAStep("survivor_selection", partial(survivor_selection, config=config)),
+        EAStep("crossover", partial(crossover, config=config)),
+        EAStep("mutation", partial(mutation, config=config)),
+        EAStep("evaluation", partial(evaluate, config=config)),
+        EAStep(
+            "survivor_selection", partial(survivor_selection, config=config)
+        ),
     ]
 
-    # Initialize EA
     ea = EA(
         population_list,
         operations=ops,
-        num_of_generations=100,
+        num_of_generations=config.num_of_generations,
     )
 
     ea.run()
@@ -224,33 +262,42 @@ def main() -> None:
     fitnesses = []
 
     populations = []
-    for i in range(100):
-        ea.fetch_population(only_alive=False, best_comes=None, custom_logic=[Individual.time_of_birth==i])
+    for i in range(config.num_of_generations):
+        ea.fetch_population(
+            only_alive=False,
+            best_comes=None,
+            custom_logic=[Individual.time_of_birth == i],
+        )
         individuals = ea.population
         populations.append(individuals)
-        avg_fitness = sum(ind.fitness for ind in individuals) / len(individuals) if individuals else 0
+        avg_fitness = (
+            sum(ind.fitness for ind in individuals) / len(individuals)
+            if individuals
+            else 0
+        )
         console.log(f"Generation {i}: Avg Fitness = {avg_fitness}")
         fitnesses.append(avg_fitness)
 
     # Line plot of the fitness
-    plt.plot(range(100), fitnesses, marker='o')
-    plt.title(f'{config.genotype.__name__} - {config.task}')
-    plt.xlabel('Generation')
-    plt.ylabel('Average Fitness')
-    plt.savefig(f'average_fitness_over_generations_{config.genotype.__name__}_{config.task}.png')
+    plt.plot(range(config.num_of_generations), fitnesses, marker="o")
+    plt.title(f"{config.genotype.__name__} - {config.task}")
+    plt.xlabel("Generation")
+    plt.ylabel("Average Fitness")
+    plt.savefig(
+        f"average_fitness_over_generations_{config.genotype.__name__}_{config.task}.png"
+    )
     plt.show()
 
-    morphology_analyzer = MorphologyAnalyzer()
-    morphology_analyzer.load_target_robots(config.task_params["target_robot_path"])
-
-    #analyze_evolution_videos(morphology_analyzer, populations, lambda x: config.genotype.to_digraph(config.genotype.from_json(x)))
+    # analyze_evolution_videos(morphology_analyzer, populations, lambda x: config.genotype.to_digraph(config.genotype.from_json(x)))
 
     # Launch interactive dashboard
-    print("\nLaunching Evolution Dashboard...")
+    # print("\nLaunching Evolution Dashboard...")
 
-    decoder = lambda individual: config.genotype.to_digraph(config.genotype.from_json(individual.genotype))
-    run_dashboard(populations, decoder, config)
-    
+    # decoder = lambda individual: config.genotype.to_digraph(
+    #     config.genotype.from_json(individual.genotype)
+    # )
+    # run_dashboard(populations, decoder, config)
+
 
 if __name__ == "__main__":
     main()

@@ -5,6 +5,8 @@ Notes
     * Do we consider survivors to be of the new generation?
 """
 
+from __future__ import annotations
+
 # Standard library
 import random
 from collections.abc import Callable
@@ -110,10 +112,10 @@ class AbstractEA:
 @dataclass
 class EAStep:
     name: str
-    operation: Callable[[Population], Population]
+    operation: Callable[[Population, EA], Population]
 
-    def __call__(self, population: Population) -> Population:
-        return self.operation(population)
+    def __call__(self, population: Population, ea: EA) -> Population:
+        return self.operation(population, ea=ea)
 
 
 class EA(AbstractEA):
@@ -264,7 +266,7 @@ class EA(AbstractEA):
         self.current_generation += 1
         self.fetch_population()
         for operation in self.operations:
-            self.population = operation(self.population)
+            self.population = operation(self.population, self)
         self.commit_population()
 
     def run(self) -> None:
