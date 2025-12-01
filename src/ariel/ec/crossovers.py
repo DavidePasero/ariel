@@ -2,22 +2,26 @@
 
 from __future__ import annotations
 
-# Standard library
-from abc import ABC, abstractmethod
-from pathlib import Path
 import random
+
+# Standard library
+from abc import ABC
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 # Third-party libraries
 import numpy as np
 from rich.console import Console
 from rich.traceback import install
 
-from typing import TYPE_CHECKING
+from ariel.ec.genotypes.cppn.cppn_genome import CPPN_genotype
 
 # Local libraries
 from ariel.ec.genotypes.lsystem.l_system_genotype import LSystemDecoder
 
 if TYPE_CHECKING:
+    from ariel.ec.genotypes.cppn.connection import Connection
+    from ariel.ec.genotypes.cppn.node import Node
     from ariel.ec.genotypes.genotype import Genotype
     from ariel.ec.genotypes.tree.tree_genome import TreeGenome
 
@@ -42,6 +46,9 @@ class Crossover(ABC):
 
     @classmethod
     def set_which_crossover(cls, crossover_type: str) -> None:
+        if crossover_type not in cls.crossovers_mapping:
+            msg = f"Crossover type '{crossover_type}' not recognized."
+            raise ValueError(msg)
         cls.which_crossover = crossover_type
 
     def __init_subclass__(cls):
@@ -49,12 +56,11 @@ class Crossover(ABC):
         cls.crossovers_mapping = {
             name: getattr(cls, name)
             for name, val in cls.__dict__.items()
-            if isinstance(val, staticmethod)
+            if isinstance(val, staticmethod) and not name.startswith("_")
         }
 
-    @classmethod
     def __call__(
-        cls,
+        self,
         parent_i: Genotype,
         parent_j: Genotype,
         **kwargs: dict,
@@ -73,13 +79,9 @@ class Crossover(ABC):
         tuple[Genotype, Genotype]
             Two child genotypes resulting from the crossover.
         """
-        if cls.which_crossover in cls.crossovers_mapping:
-            return cls.crossovers_mapping[cls.which_crossover](
-                parent_i, parent_j, **kwargs
-            )
-        else:
-            msg = f"Crossover type '{cls.which_crossover}' not recognized."
-            raise ValueError(msg)
+        return self.crossovers_mapping[self.which_crossover](
+            parent_i, parent_j, **kwargs
+        )
 
 
 class IntegerCrossover(Crossover):
@@ -633,6 +635,78 @@ class LSystemCrossover(Crossover):
             lsystem_parent2.verbose,
         )
         return offspring1, offspring2
+
+
+class CPPNCrossover(Crossover):
+    @staticmethod
+    def crossover(
+        parent_i: CPPN_genotype, parent_j: CPPN_genotype
+    ) -> tuple[CPPN_genotype, CPPN_genotype]:
+        # Select fitter
+        if parent_i.fitness >= parent_j.fitness:
+            fitter, other = parent_i, parent_j
+        else:
+            fitter, other = parent_j, parent_i
+
+        # If equal fitness and length differs, standard NEAT prefers NOT the shorter as fitter
+        # but we’ll keep your tie-break if you need it.
+
+        # Start offspring with no genes; we’ll add safely
+        nodes: dict[int, Node] = {}
+        conns: dict[int, Connection] = {}
+
+        child = CPPN_genotype(nodes, conns, fitness=0.0)
+
+        # Bring in any node that might be referenced later (copy lazily when needed)
+        def ensure_node(nid: int, source: CPPN_genotype):
+            if nid not in child.nodes:
+                child.nodes[nid] = source.nodes[nid].copy()
+
+        # Helper: attempt to add a connection safely
+        def try_add_copy(src_conn: Connection, from_parent: CPPN_genotype):
+            ensure_node(src_conn.in_id, from_parent)
+            ensure_node(src_conn.out_id, from_parent)
+            # preserve enabled status using NEAT's rule:
+            # If a matching gene exists in both parents and is disabled in either, keep it disabled
+            enabled = src_conn.enabled
+            other_conn = other.connections.get(src_conn.innov_id)
+            if other_conn and (not src_conn.enabled or not other_conn.enabled):
+                enabled = False
+
+            # Clone with the (possibly) updated enabled bit
+            c = src_conn.copy()
+            c.enabled = enabled
+
+            # Only add if enabled or (optional) you want to store disabled too.
+            # If you keep disabled edges, they must NOT be considered in cycle checks for execution.
+            try:
+                if c.enabled:
+                    child.add_connection(c)  # will reject cycles/illegal edges
+                else:
+                    # Keep disabled edges as metadata without affecting topology:
+                    child.connections[c.innov_id] = c
+            except ValueError:
+                # Edge would create a cycle or illegal direction → skip it
+                pass
+
+        # 1) Add fitter parent’s connections first
+        for conn in fitter.connections.values():
+            try_add_copy(conn, fitter)
+
+        # 2) Merge the other parent’s connections per NEAT rules
+        for innov_id, conn_b in other.connections.items():
+            conn_a = fitter.connections.get(innov_id)
+            if conn_a:
+                # matching gene → randomly choose (weight etc.), then apply disabled rule
+                chosen = random.choice([conn_a, conn_b]).copy()
+                try_add_copy(chosen, fitter if chosen is conn_a else other)
+            else:
+                # disjoint/excess from less fit → NEAT: inherit only if equal fitness
+                if other.fitness == fitter.fitness:
+                    try_add_copy(conn_b, other)
+
+        # Offspring 1 unchanged (copy parent_i to keep your API)
+        return parent_i.copy(), child
 
 
 def tree_main():
