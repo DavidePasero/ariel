@@ -9,6 +9,8 @@ from ariel.ec.a004 import EA
 
 type Population = list[Individual]
 
+from metrics import compute_6d_descriptor
+
 
 class PreprocessFunc(Protocol):
     def __call__(
@@ -77,6 +79,13 @@ def preprocess_evolve_to_copy_sequence_reverse(
     config.morphology_analyzer.load_target_robots(
         *(Path(p) for p in target_paths)
     )
+
+
+@register_preprocessing("evolve_for_novelty")
+def preprocess_evolve_for_novelty(
+    config: EASettings,
+) -> None:
+    pass
 
 
 # ------------------------ Fitness Functions ------------------------ #
@@ -155,31 +164,40 @@ def evolve_for_novelty(
         population: Population, robot_descriptors: list
     ):
         for ind in population:
-            measures = _get_6d_descriptors(ind, config)
+            genotype = config.genotype.from_json(ind.genotype)
+            measures = compute_6d_descriptor(genotype.to_digraph())
             robot_descriptors.append(measures)
         return robot_descriptors
 
+    # Get archived population
     ea.fetch_population(
-        only_alive=False, custom_logic=(Individual.alive == False)
+        only_alive=False,
+        custom_logic=(
+            not Individual.alive,
+            Individual.tags_["novel"],
+        ),
     )
 
     old_population = ea.population
-
+    # Append archived individuals' descriptors
     robot_descriptors = _get_descriptors_and_append(
-        population, robot_descriptors
+        old_population,
+        robot_descriptors,
     )
+
+    # Append robot descriptors with current population
     robot_descriptors = _get_descriptors_and_append(
-        old_population, robot_descriptors
+        population,
+        robot_descriptors,
     )
 
     distance_matrix = cdist(
-        robot_descriptors, robot_descriptors, metric="euclidean"
+        robot_descriptors,
+        robot_descriptors,
+        metric="euclidean",
     )
 
-    # Current population
-    ea.fetch_population()
-    population = ea.population
-
+    # Compute novelty scores
     for idx, ind in enumerate(population):
         # Exclude self-distance by setting it to infinity
         distances = distance_matrix[idx]
@@ -189,5 +207,6 @@ def evolve_for_novelty(
         nearest_distances = sorted(distances)[:k]
         novelty_score = sum(nearest_distances) / k
         ind.fitness = novelty_score
-
+        if novelty_score >= config.task_params["threshold_for_novelty"]:
+            ind.tags["novel"] = True
     return population

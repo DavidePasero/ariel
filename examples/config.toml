@@ -9,25 +9,26 @@ genotype = "cppn"
 
 # Choose which (morphological) task we want to try
 # One of "evolve_to_copy", "evolve_to_copy_sequence_normal", "evolve_to_copy_sequence_reverse", "evolve_for_novelty",
-task = "evolve_to_copy"
+task = "evolve_for_novelty"
 
 [task.evolve_to_copy.params]
 target_robot_path = "examples/target_robots/large_robot_25.json"
-distance_metric = "descriptor"
+distance_metric = "ted"
 
 
 [task.evolve_to_copy_sequence_normal.params]
 target_robot_paths = ["examples/target_robots/small_robot_8.json", "examples/target_robots/medium_robot_15.json", "examples/target_robots/large_robot_25.json"]
-distance_metric = "descriptor"
+distance_metric = "ted"
 
 
 [task.evolve_to_copy_sequence_reverse.params]
 target_robot_paths = ["examples/target_robots/small_robot_8.json", "examples/target_robots/medium_robot_15.json", "examples/target_robots/large_robot_25.json"]
-distance_metric = "descriptor"
+distance_metric = "ted"
 
 
 [task.evolve_for_novelty.params]
 n_points_to_consider =  10
+threshold_for_novelty = 0.1
 distance_metric = "descriptor"
 
 # =========================
@@ -38,7 +39,7 @@ quiet = false
 is_maximisation = true
 first_generation_id = 0
 num_of_generations = 100
-target_population_size = 100
+target_population_size = 30
 
 # =========================
 # Data config
@@ -100,7 +101,12 @@ mutation = "mutate_cppn"
 crossover = "crossover"
 
 [genotypes.cppn.mutation.params]
-node_add_rate = 0.5
-conn_add_rate = 0.5
+node_add_rate = 0.2
+conn_add_rate = 0.2
+node_remove_rate = 0.2
+conn_remove_rate = 0.2
+weight_mutate_rate = 0.2
+
+weight_mutate_power = 1.0
 
 [genotypes.cppn.crossover.params]

@@ -381,38 +381,52 @@ class CPPNMutator(Mutation):
         individual: Genotype,
         node_add_rate: float,
         conn_add_rate: float,
+        node_remove_rate: float,
+        conn_remove_rate: float,
+        weight_mutate_rate: float,
+        weight_mutate_power: float,
         next_innov_id_getter,  # function to get/update global innovation ID
         next_node_id_getter,  # function to get/update global node ID
     ):
         """
-        Applies structural mutation (add_node or add_connection).
+        Applies structural mutations (add/remove node/connection) and weight mutations.
+        All mutations are applied sequentially based on their rates.
         """
-        new_individual = None
 
+        # 1. Add Connection
         if random.random() < conn_add_rate:
-            new_individual = CPPNMutator._mutate_add_connection(
+            individual = CPPNMutator._mutate_add_connection(
                 individual, next_innov_id_getter
             )
 
+        # 2. Add Node
         if random.random() < node_add_rate:
-            new_individual = CPPNMutator._mutate_add_node(
+            individual = CPPNMutator._mutate_add_node(
                 individual, next_innov_id_getter, next_node_id_getter
             )
 
-        # new_individual can be None if mutation was not possible
-        return new_individual if new_individual else individual
+        # 3. Remove Connection
+        if random.random() < conn_remove_rate:
+            individual = CPPNMutator._mutate_remove_connection(individual)
+
+        # 4. Remove Node
+        if random.random() < node_remove_rate:
+            individual = CPPNMutator._mutate_remove_node(individual)
+
+        # 5. Modify Weight
+        if random.random() < weight_mutate_rate:
+            individual = CPPNMutator._mutate_weight(
+                individual, weight_mutate_power
+            )
+
+        return individual
 
     @staticmethod
     def _mutate_add_connection(individual: Genotype, next_innov_id_getter):
-        """
-        Try to add exactly one new acyclic connection.
-        If it can't (duplicate/illegal/would create cycle), return the individual unmodified.
-        """
-        # Need at least two nodes
+        """Try to add exactly one new acyclic connection."""
         if len(individual.nodes) < 2:
             return individual
 
-        # If the graph is already cyclic (shouldn't be), bail out without changing anything
         try:
             order = individual.get_node_ordering()
         except Exception:
@@ -420,40 +434,49 @@ class CPPNMutator(Mutation):
 
         rank = {nid: i for i, nid in enumerate(order)}
 
-        # Pick two distinct nodes once
-        a, b = random.sample(list(individual.nodes.keys()), 2)
-        na, nb = individual.nodes[a], individual.nodes[b]
+        # Attempt to find a valid pair
+        node_ids = list(individual.nodes.keys())
+        # Try a few times to find a valid pair to avoid infinite loops in dense graphs
+        for _ in range(20):
+            a, b = random.sample(node_ids, 2)
+            na, nb = individual.nodes[a], individual.nodes[b]
 
-        # Decide a single candidate direction that could be valid.
-        # We require: not from output, not into input, and forward in topo order.
-        candidate = None
-        if na.typ != "output" and nb.typ != "input" and rank[a] < rank[b]:
-            candidate = (a, b)
-        elif nb.typ != "output" and na.typ != "input" and rank[b] < rank[a]:
-            candidate = (b, a)
-        else:
-            return individual  # this pair can't yield a legal forward edge
+            candidate = None
+            if na.typ != "output" and nb.typ != "input" and rank[a] < rank[b]:
+                candidate = (a, b)
+            elif nb.typ != "output" and na.typ != "input" and rank[b] < rank[a]:
+                candidate = (b, a)
 
-        in_id, out_id = candidate
+            if not candidate:
+                continue
 
-        # Skip if an enabled connection with same endpoints already exists
-        if any(
-            c.enabled and c.in_id == in_id and c.out_id == out_id
-            for c in individual.connections.values()
-        ):
-            return individual
+            in_id, out_id = candidate
 
-        # Propose once; if it fails, do nothing
-        innov = next_innov_id_getter()
-        weight = individual._get_random_weight()
-        conn = Connection(in_id, out_id, weight, enabled=True, innov_id=innov)
-        try:
-            individual.add_connection(
-                conn
-            )  # will reject if it would create a cycle, etc.
-        except ValueError:
-            # invalid for any reason -> leave individual unchanged
-            return individual
+            # Check if connection exists
+            exists = False
+            for c in individual.connections.values():
+                if c.in_id == in_id and c.out_id == out_id:
+                    # If it exists but is disabled, we could re-enable it,
+                    # but standard NEAT usually treats "add" as new structure.
+                    # Here we just skip.
+                    exists = True
+                    break
+
+            if exists:
+                continue
+
+            # Add new connection
+            innov = next_innov_id_getter()
+            weight = individual._get_random_weight()
+            conn = Connection(
+                in_id, out_id, weight, enabled=True, innov_id=innov
+            )
+
+            try:
+                individual.add_connection(conn)
+                return individual
+            except ValueError:
+                continue
 
         return individual
 
@@ -462,17 +485,13 @@ class CPPNMutator(Mutation):
         individual: Genotype, next_innov_id_getter, next_node_id_getter
     ):
         """Split an enabled connection with a new hidden node."""
-        # Only enabled edges are valid split candidates
         enabled = [c for c in individual.connections.values() if c.enabled]
         if not enabled:
-            return individual  # no-op
+            return individual
 
         conn_to_split: Connection = random.choice(enabled)
-
-        # Disable the original
         conn_to_split.enabled = False
 
-        # Create the new node
         new_node_id = next_node_id_getter()
         new_node = Node(
             _id=new_node_id,
@@ -482,12 +501,12 @@ class CPPNMutator(Mutation):
         )
         individual.add_node(new_node)
 
-        # in -> new (weight 1.0, NEAT style)
+        # in -> new
         innov1 = next_innov_id_getter()
         c1 = Connection(conn_to_split.in_id, new_node_id, 1.0, True, innov1)
-        individual.add_connection(c1)  # will raise if illegal
+        individual.add_connection(c1)
 
-        # new -> out (preserve original weight)
+        # new -> out
         innov2 = next_innov_id_getter()
         c2 = Connection(
             new_node_id,
@@ -496,7 +515,73 @@ class CPPNMutator(Mutation):
             True,
             innov2,
         )
-        individual.add_connection(c2)  # will raise if illegal
+        individual.add_connection(c2)
+
+        return individual
+
+    @staticmethod
+    def _mutate_weight(individual: Genotype, power: float):
+        """Randomly select one connection and perturb its weight."""
+        if not individual.connections:
+            return individual
+
+        # Pick a random connection (enabled or disabled, usually mutations can happen on disabled too,
+        # but typically affect phenotype only if enabled. We mutate any to preserve genetic drift).
+        conn = random.choice(list(individual.connections.values()))
+
+        # Perturb weight
+        delta = random.gauss(0, power)
+        conn.weight += delta
+
+        return individual
+
+    @staticmethod
+    def _mutate_remove_connection(individual: Genotype):
+        """Randomly remove one existing connection."""
+        if not individual.connections:
+            return individual
+
+        # Get list of innovation IDs
+        innov_ids = list(individual.connections.keys())
+        choice_id = random.choice(innov_ids)
+
+        del individual.connections[choice_id]
+
+        return individual
+
+    @staticmethod
+    def _mutate_remove_node(individual: Genotype):
+        """
+        Randomly remove one hidden node and all its attached connections.
+        Cannot remove input or output nodes.
+        """
+        # Identify hidden nodes
+        hidden_nodes = [
+            nid
+            for nid, node in individual.nodes.items()
+            if node.typ == "hidden"
+        ]
+
+        if not hidden_nodes:
+            return individual
+
+        node_to_remove_id = random.choice(hidden_nodes)
+
+        # 1. Remove the node
+        del individual.nodes[node_to_remove_id]
+
+        # 2. Remove all connections attached to this node
+        # We must collect keys first to avoid "dictionary changed size during iteration"
+        conns_to_remove = []
+        for innov_id, conn in individual.connections.items():
+            if (
+                conn.in_id == node_to_remove_id
+                or conn.out_id == node_to_remove_id
+            ):
+                conns_to_remove.append(innov_id)
+
+        for innov_id in conns_to_remove:
+            del individual.connections[innov_id]
 
         return individual
 
