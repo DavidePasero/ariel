@@ -5,7 +5,7 @@
 [run]
 # Choose which genotype profile to use for this run.
 # One of: "integers", "tree", "lsystem", "cppn"
-genotype = "cppn"
+genotype = "lsystem"
 
 # Choose which (morphological) task we want to try
 # One of "evolve_to_copy", "evolve_to_copy_sequence_normal", "evolve_to_copy_sequence_reverse", "evolve_for_novelty",
@@ -39,7 +39,7 @@ quiet = false
 is_maximisation = true
 first_generation_id = 0
 num_of_generations = 100
-target_population_size = 30
+target_population_size = 100
 
 # =========================
 # Data config
