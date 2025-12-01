@@ -1,6 +1,7 @@
 # Standard library
 from __future__ import annotations
 
+import os
 import random
 import tomllib
 from collections.abc import Callable
@@ -260,6 +261,7 @@ def main() -> None:
     console.log(worst)
 
     fitnesses = []
+    stds = []  # It's useful to store these for plotting error bars later
 
     populations = []
     for i in range(config.num_of_generations):
@@ -270,23 +272,60 @@ def main() -> None:
         )
         individuals = ea.population
         populations.append(individuals)
-        avg_fitness = (
-            sum(ind.fitness for ind in individuals) / len(individuals)
-            if individuals
-            else 0
-        )
-        console.log(f"Generation {i}: Avg Fitness = {avg_fitness}")
-        fitnesses.append(avg_fitness)
+        
+        # Extract fitness values into a list once
+        gen_fitness_values = [ind.fitness for ind in individuals]
 
-    # Line plot of the fitness
-    plt.plot(range(config.num_of_generations), fitnesses, marker="o")
+        if gen_fitness_values:
+            avg_fitness = np.mean(gen_fitness_values)
+            std_fitness = np.std(gen_fitness_values)
+        else:
+            avg_fitness = 0.0
+            std_fitness = 0.0
+
+        # Display both Average and Standard Deviation
+        console.log(f"Generation {i}: Avg Fitness = {avg_fitness:.4f} ± {std_fitness:.4f}")
+        
+        fitnesses.append(avg_fitness)
+        stds.append(std_fitness)
+
+    output_folder = Path("output_plots", config.genotype.__name__, config.task)
+    os.makedirs(output_folder, exist_ok=True)
+
+    # Convert lists to numpy arrays for element-wise math
+    generations = np.arange(config.num_of_generations)
+    means = np.array(fitnesses)
+    deviations = np.array(stds)
+
+    # Create the plot
+    plt.figure(figsize=(10, 6))
+    
+    # 1. Plot the Average line
+    plt.plot(generations, means, marker="o", label="Average Fitness")
+
+    # 2. Plot the Standard Deviation as a shaded region
+    plt.fill_between(
+        generations,
+        means - deviations,
+        means + deviations,
+        alpha=0.2,       # Transparency (0.0 to 1.0)
+        label="Standard Deviation"
+    )
+
     plt.title(f"{config.genotype.__name__} - {config.task}")
     plt.xlabel("Generation")
-    plt.ylabel("Average Fitness")
+    plt.ylabel("Fitness")
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+
     plt.savefig(
-        f"average_fitness_over_generations_{config.genotype.__name__}_{config.task}.png"
+        Path(
+            output_folder,
+            f"avg_fitness_{config.task_params.get('distance_metric')}.png",
+        )
     )
     plt.show()
+    plt.close()
 
     # analyze_evolution_videos(morphology_analyzer, populations, lambda x: config.genotype.to_digraph(config.genotype.from_json(x)))
 

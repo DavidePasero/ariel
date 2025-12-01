@@ -10,12 +10,14 @@ import numpy as np
 from typing import TYPE_CHECKING
 
 from ariel.ec.genotypes.genotype import Genotype
+
 if TYPE_CHECKING:
     from ariel.ec.crossovers import TreeCrossover
     from ariel.ec.mutations import TreeMutator
 
 SEED = 42
 RNG = np.random.default_rng(SEED)
+
 
 class TreeGenome(Genotype):
     def __init__(self, root: TreeNode | None = None):
@@ -24,15 +26,17 @@ class TreeGenome(Genotype):
     @staticmethod
     def get_crossover_object() -> TreeCrossover:
         from ariel.ec.crossovers import TreeCrossover
+
         """Return the crossover operator for tree genomes."""
         return TreeCrossover()
-    
+
     @staticmethod
     def get_mutator_object() -> TreeMutator:
         from ariel.ec.mutations import TreeMutator
+
         """Return the mutator operator for tree genomes."""
         return TreeMutator()
-    
+
     @staticmethod
     def create_individual(**kwargs: dict) -> TreeGenome:
         """Generate a new TreeGenome individual."""
@@ -51,6 +55,7 @@ class TreeGenome(Genotype):
             # Assign 0..N-1 in first-seen (DFS) order
             seen: dict[int, int] = {}
             next_id = 0
+
             def node_key(n: TreeNode) -> int:
                 nonlocal next_id
                 if n.id not in seen:
@@ -58,7 +63,11 @@ class TreeGenome(Genotype):
                     next_id += 1
                 return seen[n.id]
 
-        def dfs(parent: TreeNode | None, child: TreeNode, via_face: config.ModuleFaces | None) -> None:
+        def dfs(
+            parent: TreeNode | None,
+            child: TreeNode,
+            via_face: config.ModuleFaces | None,
+        ) -> None:
             cid = node_key(child)
             # Add/update child node with attributes (use enum names for JSON-friendliness)
             g.add_node(
@@ -70,7 +79,11 @@ class TreeGenome(Genotype):
 
             if parent is not None:
                 pid = node_key(parent)
-                g.add_edge(pid, cid, face=via_face.name if via_face is not None else None)
+                g.add_edge(
+                    pid,
+                    cid,
+                    face=via_face.name if via_face is not None else None,
+                )
 
             # Recurse over children (face -> subnode)
             for face, sub in child.children.items():
@@ -82,9 +95,15 @@ class TreeGenome(Genotype):
     @classmethod
     def default_init(cls, *args, **kwargs):
         """Default instantiation with a core root."""
-        return cls(root=TreeNode(config.ModuleInstance(type=config.ModuleType.CORE,
-                                              rotation=config.ModuleRotationsIdx.DEG_0,
-                                              links={})))
+        return cls(
+            root=TreeNode(
+                config.ModuleInstance(
+                    type=config.ModuleType.CORE,
+                    rotation=config.ModuleRotationsIdx.DEG_0,
+                    links={},
+                )
+            )
+        )
 
     @property
     def root(self) -> TreeNode | None:
@@ -121,7 +140,9 @@ class TreeGenome(Genotype):
         for child in node.children.values():
             yield from self._iter_nodes_recursive(child)
 
-    def _format_node(self, node: TreeNode, prefix: str, is_last: bool) -> list[str]:
+    def _format_node(
+        self, node: TreeNode, prefix: str, is_last: bool
+    ) -> list[str]:
         """Helper method to format a node and its children recursively."""
         connector = "└── " if is_last else "├── "
         node_info = f"{node.module_type.name}({node.rotation.name}, depth={node._depth})"
@@ -132,17 +153,24 @@ class TreeGenome(Genotype):
         if node.children:
             child_items = list(node.children.items())
             for i, (face, child) in enumerate(child_items):
-                is_last_child = (i == len(child_items) - 1)
+                is_last_child = i == len(child_items) - 1
                 face_connector = "└── " if is_last_child else "├── "
                 lines.append(f"{child_prefix}{face_connector}[{face.name}]")
 
-                grandchild_prefix = child_prefix + ("    " if is_last_child else "│   ")
+                grandchild_prefix = child_prefix + (
+                    "    " if is_last_child else "│   "
+                )
                 lines.extend(self._format_node(child, grandchild_prefix, True))
 
         return lines
 
-    def add_child_to_node(self, node: TreeNode, face: config.ModuleFaces, child_module: config.ModuleInstance):
-        """Helper method to add a child to a specific node. However, not recommended to use. Rather use """
+    def add_child_to_node(
+        self,
+        node: TreeNode,
+        face: config.ModuleFaces,
+        child_module: config.ModuleInstance,
+    ):
+        """Helper method to add a child to a specific node. However, not recommended to use. Rather use"""
         if face not in node.available_faces():
             raise ValueError(f"Face {face} is not available on this node.")
 
@@ -159,7 +187,9 @@ class TreeGenome(Genotype):
         else:
             return self._root.find_node_dfs(target_id)
 
-    def find_nodes_by_type(self, module_type: config.ModuleType, method: str = "dfs") -> list[TreeNode]:
+    def find_nodes_by_type(
+        self, module_type: config.ModuleType, method: str = "dfs"
+    ) -> list[TreeNode]:
         """Find all nodes of a specific module type."""
         if not self._root:
             return []
@@ -171,17 +201,17 @@ class TreeGenome(Genotype):
         else:
             return self._root.find_all_nodes_dfs(predicate)
 
-    def copy(self) -> 'TreeGenome':
+    def copy(self) -> "TreeGenome":
         """Create a shallow copy of the TreeGenome."""
         new_genome = TreeGenome()
         if self._root:
             new_genome._root = self._root.copy()
         return new_genome
 
-    def __copy__(self) -> 'TreeGenome':
+    def __copy__(self) -> "TreeGenome":
         """Support for copy.copy()."""
         return self.copy()
-    
+
     # ---------- JSON serialization ----------
 
     @staticmethod
@@ -195,35 +225,39 @@ class TreeGenome(Genotype):
     def from_json(json_str: str, **kwargs) -> "TreeGenome":
         """Deserialize from a JSON string."""
         return TreeGenome.from_dict(json.loads(json_str))
-    
+
     @staticmethod
     def to_dict(robot_genome: "TreeGenome") -> dict:
         """Serialize the genome into a pure-Python dict (JSON-friendly)."""
         return {
-            "root": None if robot_genome._root is None else robot_genome._root.to_dict()
+            "root": None
+            if robot_genome._root is None
+            else robot_genome._root.to_dict()
         }
 
     def to_json(self, *, indent: int | None = 2) -> str:
         """Serialize to a JSON string."""
         return json.dumps(TreeGenome.to_dict(self), indent=indent)
 
-    # TODO: Implement this
-    # def __deepcopy__(self, memo) -> 'TreeGenome':
-    #     """Support for copy.deepcopy()."""
-    #     new_genome = TreeGenome()
-    #     if self._root:
-    #         new_genome._root = copy.deepcopy(self._root, memo)
-    #     return new_genome
-
 
 class TreeNode:
-
-    def __init__(self, module: config.ModuleInstance | None = None, depth: int = 0,
-                 module_type: config.ModuleType | None = None, module_rotation: config.ModuleRotationsIdx | None = None):
+    def __init__(
+        self,
+        module: config.ModuleInstance | None = None,
+        depth: int = 0,
+        module_type: config.ModuleType | None = None,
+        module_rotation: config.ModuleRotationsIdx | None = None,
+    ):
         if module is None:
-            assert module_type is not None, "Module type cannot be None if module is not specified"
-            assert module_rotation is not None, "Module rotation cannot be None if module is not specified"
-            module = config.ModuleInstance(type=module_type, rotation=module_rotation, links={})
+            assert module_type is not None, (
+                "Module type cannot be None if module is not specified"
+            )
+            assert module_rotation is not None, (
+                "Module rotation cannot be None if module is not specified"
+            )
+            module = config.ModuleInstance(
+                type=module_type, rotation=module_rotation, links={}
+            )
         self.module_type = module.type
         self.rotation = module.rotation
         # Keep reference to the original module. Why? Because then the links get automatically filled and we can just read them out when decoding
@@ -238,7 +272,7 @@ class TreeNode:
 
         self._enable_replacement: bool = False
 
-        self._id = id(self)# if node_id is None else node_id
+        self._id = id(self)  # if node_id is None else node_id
 
     @property
     def id(self) -> int:
@@ -247,15 +281,21 @@ class TreeNode:
     @id.setter
     def id(self, value: int | None):
         raise ValueError("ID cannot be changed once set.")
-    
+
     @classmethod
-    def random_tree_node(cls, max_depth: int = 1, branch_prob: float = 0.5) -> 'TreeNode' | None:
+    def random_tree_node(
+        cls, max_depth: int = 1, branch_prob: float = 0.5
+    ) -> "TreeNode" | None:
         """Create a random tree node with random children up to max_depth."""
         if max_depth < 0:
             return None
 
         # Exclude CORE and NONE from random selection
-        module_type = RNG.choice([mt for mt in config.ModuleType if mt not in {config.ModuleType.CORE, config.ModuleType.NONE}])
+        module_type = RNG.choice([
+            mt
+            for mt in config.ModuleType
+            if mt not in {config.ModuleType.CORE, config.ModuleType.NONE}
+        ])
         module_rotation = RNG.choice(list(config.ModuleRotationsIdx))
         node = cls(module_type=module_type, module_rotation=module_rotation)
 
@@ -264,7 +304,9 @@ class TreeNode:
 
         available_faces = config.ALLOWED_FACES[module_type]
         num_children = RNG.integers(0, len(available_faces) + 1)
-        chosen_faces = RNG.choice(available_faces, size=num_children, replace=False)
+        chosen_faces = RNG.choice(
+            available_faces, size=num_children, replace=False
+        )
 
         for face in chosen_faces:
             if RNG.random() > branch_prob:
@@ -279,7 +321,9 @@ class TreeNode:
     @contextlib.contextmanager
     def enable_replacement(self):
         """Context manager to temporarily allow replacement of existing children."""
-        all_nodes_to_enable = list(self.get_all_nodes(mode="dfs", exclude_root=False))
+        all_nodes_to_enable = list(
+            self.get_all_nodes(mode="dfs", exclude_root=False)
+        )
         try:
             for n in all_nodes_to_enable:
                 n._enable_replacement = True
@@ -288,7 +332,9 @@ class TreeNode:
             for n in all_nodes_to_enable:
                 n._enable_replacement = False
 
-    def _can_attach_to_face(self, face: config.ModuleFaces, node: TreeNode | None) -> bool:
+    def _can_attach_to_face(
+        self, face: config.ModuleFaces, node: TreeNode | None
+    ) -> bool:
         """Check if a node can be attached to the given face."""
         if node is None:
             return True  # Can always detach (set to None)
@@ -301,20 +347,31 @@ class TreeNode:
                 return False  # Face already occupied
         return True
 
-    def _set_face(self, face: config.ModuleFaces, value: 'TreeNode | TreeGenome | None'):
+    def _set_face(
+        self, face: config.ModuleFaces, value: "TreeNode | TreeGenome | None"
+    ):
         """Common method to validate and set a face attribute."""
         # Handle TreeGenome by extracting its root
         if isinstance(value, TreeGenome):
             if value.root is None:
-                raise ValueError("Cannot attach empty TreeGenome (root is None)")
+                raise ValueError(
+                    "Cannot attach empty TreeGenome (root is None)"
+                )
             actual_value = value.root
         else:
             actual_value = value
 
         if not self._can_attach_to_face(face, actual_value):
-            if actual_value is not None and getattr(self, f"_{face.name.lower()}") is not None:
-                raise ValueError(f"{face.name} face already occupied on {self.module_type}")
-            raise ValueError(f"Cannot attach to {face.name} face of {self.module_type}")
+            if (
+                actual_value is not None
+                and getattr(self, f"_{face.name.lower()}") is not None
+            ):
+                raise ValueError(
+                    f"{face.name} face already occupied on {self.module_type}"
+                )
+            raise ValueError(
+                f"Cannot attach to {face.name} face of {self.module_type}"
+            )
 
         # Update the internal attribute with the actual node
         setattr(self, f"_{face.name.lower()}", actual_value)
@@ -328,7 +385,9 @@ class TreeNode:
     def _get_face_given_child(self, child_id: int) -> config.ModuleFaces | None:
         # Weird flex
         # ids_to_faces = reduce(lambda acc, x: {**acc, **x}, map(lambda face_node: {face_node[1].id: face_node[0]}, self.children.items()), {})
-        return {face_node[1].id: face_node[0] for face_node in self.children.items()}[child_id]
+        return {
+            face_node[1].id: face_node[0] for face_node in self.children.items()
+        }[child_id]
 
     def face_mapping(self, face: config.ModuleFaces):
         mapping = {
@@ -346,7 +405,7 @@ class TreeNode:
         return self._front
 
     @front.setter
-    def front(self, value: 'TreeNode | TreeGenome | None'):
+    def front(self, value: "TreeNode | TreeGenome | None"):
         self._set_face(config.ModuleFaces.FRONT, value)
 
     @property
@@ -354,7 +413,7 @@ class TreeNode:
         return self._back
 
     @back.setter
-    def back(self, value: 'TreeNode | TreeGenome | None'):
+    def back(self, value: "TreeNode | TreeGenome | None"):
         self._set_face(config.ModuleFaces.BACK, value)
 
     @property
@@ -362,7 +421,7 @@ class TreeNode:
         return self._right
 
     @right.setter
-    def right(self, value: 'TreeNode | TreeGenome | None'):
+    def right(self, value: "TreeNode | TreeGenome | None"):
         self._set_face(config.ModuleFaces.RIGHT, value)
 
     @property
@@ -370,7 +429,7 @@ class TreeNode:
         return self._left
 
     @left.setter
-    def left(self, value: 'TreeNode | TreeGenome | None'):
+    def left(self, value: "TreeNode | TreeGenome | None"):
         self._set_face(config.ModuleFaces.LEFT, value)
 
     @property
@@ -378,7 +437,7 @@ class TreeNode:
         return self._top
 
     @top.setter
-    def top(self, value: 'TreeNode | TreeGenome | None'):
+    def top(self, value: "TreeNode | TreeGenome | None"):
         self._set_face(config.ModuleFaces.TOP, value)
 
     @property
@@ -386,7 +445,7 @@ class TreeNode:
         return self._bottom
 
     @bottom.setter
-    def bottom(self, value: 'TreeNode | TreeGenome | None'):
+    def bottom(self, value: "TreeNode | TreeGenome | None"):
         self._set_face(config.ModuleFaces.BOTTOM, value)
 
     @property
@@ -426,10 +485,16 @@ class TreeNode:
         child_count = len(self.children)
         available_count = len(self.available_faces())
         child_info = f", {child_count} children" if child_count > 0 else ""
-        available_info = f", {available_count} available faces" if available_count > 0 else ""
+        available_info = (
+            f", {available_count} available faces"
+            if available_count > 0
+            else ""
+        )
         return f"TreeNode({self.module_type.name}, {self.rotation.name}, depth={self._depth}{child_info}{available_info})"
 
-    def add_child(self, face: config.ModuleFaces, child_module: config.ModuleInstance):
+    def add_child(
+        self, face: config.ModuleFaces, child_module: config.ModuleInstance
+    ):
         """Add a child to the specified face."""
         if face not in self.available_faces():
             raise ValueError(f"Face {face} is not available for attachment.")
@@ -440,17 +505,19 @@ class TreeNode:
     def remove_child(self, face: config.ModuleFaces):
         """Remove a child from the specified face."""
         if face not in config.ALLOWED_FACES[self.module_type]:
-            raise ValueError(f"Face {face} is not valid for module type {self.module_type}.")
+            raise ValueError(
+                f"Face {face} is not valid for module type {self.module_type}."
+            )
 
         setattr(self, face.name.lower(), None)
 
-    def get_child(self, face: config.ModuleFaces) -> 'TreeNode | None':
+    def get_child(self, face: config.ModuleFaces) -> "TreeNode | None":
         """Get the child at the specified face."""
         if face not in config.ALLOWED_FACES[self.module_type]:
             return None
         return getattr(self, face.name.lower(), None)
 
-    def find_node_dfs(self, target_id: int) -> 'TreeNode | None':
+    def find_node_dfs(self, target_id: int) -> "TreeNode | None":
         """Find a node by ID using Depth-First Search."""
         if self._id == target_id:
             return self
@@ -463,7 +530,7 @@ class TreeNode:
 
         return None
 
-    def find_node_bfs(self, target_id: int) -> 'TreeNode | None':
+    def find_node_bfs(self, target_id: int) -> "TreeNode | None":
         """Find a node by ID using Breadth-First Search."""
         queue = deque([self])
 
@@ -478,11 +545,13 @@ class TreeNode:
 
         return None
 
-    def find_all_nodes_dfs(self, predicate: Callable[TreeNode, bool] | None = None) -> list['TreeNode']:
+    def find_all_nodes_dfs(
+        self, predicate: Callable[TreeNode, bool] | None = None
+    ) -> list["TreeNode"]:
         """Find all nodes matching a predicate using DFS."""
         result = []
 
-        def dfs_helper(node: 'TreeNode'):
+        def dfs_helper(node: "TreeNode"):
             if predicate is None or predicate(node):
                 result.append(node)
 
@@ -492,7 +561,9 @@ class TreeNode:
         dfs_helper(self)
         return result
 
-    def find_all_nodes_bfs(self, predicate: Callable[TreeNode, bool] = None) -> list['TreeNode']:
+    def find_all_nodes_bfs(
+        self, predicate: Callable[TreeNode, bool] = None
+    ) -> list["TreeNode"]:
         """Find all nodes matching a predicate using BFS."""
         result = []
         queue = deque([self])
@@ -511,7 +582,9 @@ class TreeNode:
         """
         Returns all the nodes in the subtree that has self as root node
         """
-        predicate_root: Callable[TreeNode, bool] = (lambda x: x.id != self.id) if exclude_root else (lambda _: True)
+        predicate_root: Callable[TreeNode, bool] = (
+            (lambda x: x.id != self.id) if exclude_root else (lambda _: True)
+        )
         if mode == "dfs":
             return self.find_all_nodes_dfs(predicate=predicate_root)
         elif mode == "bfs":
@@ -523,10 +596,16 @@ class TreeNode:
         """
         Returns all the non-leaf nodes in the subtree that has self as root node
         """
-        predicate_root: Callable[TreeNode, bool] = (lambda x: x.id != self.id) if exclude_root else (lambda _: True)
-        predicate_internal_nodes: Callable[TreeNode, bool] = (lambda x: len(x.children) > 0)
+        predicate_root: Callable[TreeNode, bool] = (
+            (lambda x: x.id != self.id) if exclude_root else (lambda _: True)
+        )
+        predicate_internal_nodes: Callable[TreeNode, bool] = (
+            lambda x: len(x.children) > 0
+        )
         predicate_list = [predicate_root, predicate_internal_nodes]
-        predicate: Callable[TreeNode, bool] = lambda x: reduce(lambda p, q: p(x) and q(x), predicate_list)
+        predicate: Callable[TreeNode, bool] = lambda x: reduce(
+            lambda p, q: p(x) and q(x), predicate_list
+        )
         if mode == "dfs":
             return self.find_all_nodes_dfs(predicate=predicate)
         elif mode == "bfs":
@@ -540,26 +619,35 @@ class TreeNode:
         2) Replaces node_to_remove with node_to_add in the parent's children
         3)
         """
-        predicate_is_parent = lambda x: node_to_remove in set(x.children.values())
+        predicate_is_parent = lambda x: node_to_remove in set(
+            x.children.values()
+        )
         parent = self.find_all_nodes_dfs(predicate=predicate_is_parent)
         # print("PARENTS LENGTH",len(parent))
         if not parent or len(parent) > 1:
-            raise RuntimeError("Father not found, are you sure node_to_remove is in subtree?")
+            raise RuntimeError(
+                "Father not found, are you sure node_to_remove is in subtree?"
+            )
         # We expect a list of len 1 in which there is the parent
         parent = parent[0]
-        parent._set_face(parent._get_face_given_child(node_to_remove.id), node_to_add)
+        parent._set_face(
+            parent._get_face_given_child(node_to_remove.id), node_to_add
+        )
 
-    def copy(self) -> 'TreeNode':
+    def copy(self) -> "TreeNode":
         """Create a deep copy of this node and all its children."""
         # Create new module instance
         new_module = config.ModuleInstance(
             type=self.module_type,
             rotation=self.rotation,
-            links={}  # Will be rebuilt
+            links={},  # Will be rebuilt
         )
 
         # Create new node
-        new_node = TreeNode(new_module, depth=self._depth,)
+        new_node = TreeNode(
+            new_module,
+            depth=self._depth,
+        )
 
         # Recursively copy children
         for face, child in self.children.items():
@@ -568,10 +656,10 @@ class TreeNode:
 
         return new_node
 
-    def __copy__(self) -> 'TreeNode':
+    def __copy__(self) -> "TreeNode":
         """Support for copy.copy() - creates deep copy for tree structures."""
         return self.copy()
-    
+
     # ---------- JSON / dict serialization ----------
     def to_dict(self) -> dict:
         """
@@ -580,8 +668,7 @@ class TreeNode:
         """
         # Children as {face_name: child_dict}
         children_dict = {
-            face.name: child.to_dict()
-            for face, child in self.children.items()
+            face.name: child.to_dict() for face, child in self.children.items()
         }
         return {
             "id": self._id,
@@ -597,16 +684,18 @@ class TreeNode:
         Rebuild a TreeNode (and its subtree) from dict.
         Uses _set_face so that ModuleInstance.links remains consistent.
         """
-        #node_id = data["id"]
+        # node_id = data["id"]
         depth = data["depth"]
         module_type = config.ModuleType[data["module_type"]]
         rotation = config.ModuleRotationsIdx[data["rotation"]]
 
         # Create the node with a fresh ModuleInstance and the preserved id/depth
         node = cls(
-            module=config.ModuleInstance(type=module_type, rotation=rotation, links={}),
+            module=config.ModuleInstance(
+                type=module_type, rotation=rotation, links={}
+            ),
             depth=depth,
-            #node_id=node_id,
+            # node_id=node_id,
         )
 
         # Rebuild children through _set_face so links are updated properly.
@@ -619,15 +708,38 @@ class TreeNode:
         return node
 
 
-
 def test():
     genome = TreeGenome()
-    genome.root = TreeNode(config.ModuleInstance(type=config.ModuleType.BRICK, rotation=config.ModuleRotationsIdx.DEG_90, links={}))
-    genome.root.front = TreeNode(config.ModuleInstance(type=config.ModuleType.BRICK, rotation=config.ModuleRotationsIdx.DEG_45, links={}))
-    genome.root.left = TreeNode(config.ModuleInstance(type=config.ModuleType.BRICK, rotation=config.ModuleRotationsIdx.DEG_45, links={}))
-    #genome.root.front = TreeNode(config.ModuleInstance(type=config.ModuleType.HINGE, rotation=config.ModuleRotationsIdx.DEG_90, links={}))
+    genome.root = TreeNode(
+        config.ModuleInstance(
+            type=config.ModuleType.BRICK,
+            rotation=config.ModuleRotationsIdx.DEG_90,
+            links={},
+        )
+    )
+    genome.root.front = TreeNode(
+        config.ModuleInstance(
+            type=config.ModuleType.BRICK,
+            rotation=config.ModuleRotationsIdx.DEG_45,
+            links={},
+        )
+    )
+    genome.root.left = TreeNode(
+        config.ModuleInstance(
+            type=config.ModuleType.BRICK,
+            rotation=config.ModuleRotationsIdx.DEG_45,
+            links={},
+        )
+    )
+    # genome.root.front = TreeNode(config.ModuleInstance(type=config.ModuleType.HINGE, rotation=config.ModuleRotationsIdx.DEG_90, links={}))
     with genome.root.enable_replacement():
-        genome.root.front = TreeNode(config.ModuleInstance(type=config.ModuleType.HINGE, rotation=config.ModuleRotationsIdx.DEG_45, links={}))
+        genome.root.front = TreeNode(
+            config.ModuleInstance(
+                type=config.ModuleType.HINGE,
+                rotation=config.ModuleRotationsIdx.DEG_45,
+                links={},
+            )
+        )
     print(genome.root.front.available_faces())
     print(genome)  # Shows full tree structure
     print(genome.root)  # Shows node details with available faces

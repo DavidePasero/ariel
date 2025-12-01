@@ -1,5 +1,7 @@
 """TODO(jmdm): description of script."""
+
 from __future__ import annotations
+
 # Standard library
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
@@ -13,6 +15,7 @@ from pydantic_settings import BaseSettings
 from rich.console import Console
 from rich.traceback import install
 import copy
+
 if TYPE_CHECKING:
     from ariel.ec.genotypes.genotype import Genotype
 import ariel.body_phenotypes.robogen_lite.config as pheno_config
@@ -30,6 +33,7 @@ SEED = 42
 install(width=180)
 console = Console()
 RNG = np.random.default_rng(SEED)
+
 
 class Mutation(ABC):
     mutations_mapping: dict[str, function] = NotImplemented
@@ -69,15 +73,14 @@ class Mutation(ABC):
         """
         if cls.which_mutation in cls.mutations_mapping:
             return cls.mutations_mapping[cls.which_mutation](
-                individual,
-                **kwargs
+                individual, **kwargs
             )
         else:
             msg = f"Mutation type '{cls.which_mutation}' not recognized."
             raise ValueError(msg)
 
-class IntegerMutator(Mutation):
 
+class IntegerMutator(Mutation):
     @staticmethod
     def random_swap(
         individual: Genotype,
@@ -234,15 +237,20 @@ class IntegerMutator(Mutation):
 #             genome.root._set_face(face, subtree)
 #         return genome
 
+
 class TreeMutator(Mutation):
-        
     @staticmethod
-    def _random_tree(max_depth: int = 2, branching_prob: float = 0.5) -> Genotype:
+    def _random_tree(
+        max_depth: int = 2, branching_prob: float = 0.5
+    ) -> Genotype:
         """Generate a random tree with pheno_configurable branching probability."""
         from ariel.ec.genotypes.tree.tree_genome import TreeGenome, TreeNode
+
         genome = TreeGenome.default_init()  # Start with CORE
         face = RNG.choice(genome.root.available_faces())
-        subtree = TreeNode.random_tree_node(max_depth=max_depth - 1, branch_prob=branching_prob)
+        subtree = TreeNode.random_tree_node(
+            max_depth=max_depth - 1, branch_prob=branching_prob
+        )
         if subtree:
             genome.root._set_face(face, subtree)
         return genome
@@ -255,6 +263,7 @@ class TreeMutator(Mutation):
     ) -> Genotype:
         """Replace a random subtree with a new random subtree."""
         from ariel.ec.genotypes.tree.tree_genome import TreeNode
+
         new_individual = copy.copy(individual)
 
         # Collect all nodes in the tree
@@ -262,10 +271,14 @@ class TreeMutator(Mutation):
 
         if not all_nodes:
             # print("Tree has no nodes to replace; generating a new random tree.")
-            return TreeMutator._random_tree(max_depth=max_subtree_depth, branching_prob=branching_prob)
+            return TreeMutator._random_tree(
+                max_depth=max_subtree_depth, branching_prob=branching_prob
+            )
 
         # Generate a new random subtree
-        new_subtree = TreeNode.random_tree_node(max_depth=max_subtree_depth, branch_prob=branching_prob)
+        new_subtree = TreeNode.random_tree_node(
+            max_depth=max_subtree_depth, branch_prob=branching_prob
+        )
 
         node_to_replace = RNG.choice(all_nodes)
 
@@ -273,74 +286,186 @@ class TreeMutator(Mutation):
             new_individual.root.replace_node(node_to_replace, new_subtree)
 
         return new_individual
-    
-class LSystemMutator(Mutation):
 
+
+class LSystemMutator(Mutation):
     @staticmethod
-    def mutate_one_point_lsystem(lsystem,mutation_rate,add_temperature=0.5):
+    def mutate_one_point_lsystem(lsystem, mutation_rate, add_temperature=0.5):
         # op_completed = ""
-        if random.random()<mutation_rate:
-            action=random.choices(['add_rule','rm_rule'],weights=[add_temperature,1-add_temperature])[0]
+        if random.random() < mutation_rate:
+            action = random.choices(
+                ["add_rule", "rm_rule"],
+                weights=[add_temperature, 1 - add_temperature],
+            )[0]
             rules = lsystem.rules
-            rule_to_change=random.choice(range(0,len(rules)))
+            rule_to_change = random.choice(range(0, len(rules)))
             rl_tmp = list(rules.values())[rule_to_change]
-            splitted_rules=rl_tmp.split()
-            gene_to_change=random.choice(range(0,len(splitted_rules)))
+            splitted_rules = rl_tmp.split()
+            gene_to_change = random.choice(range(0, len(splitted_rules)))
             match action:
-                case 'add_rule':
-                    operator=random.choice(['addf','addk','addl','addr','addb','addt','movf','movk','movl','movr','movt','movb'])
-                    if operator in ['addf','addk','addl','addr','addb','addt']:
-                        if splitted_rules[gene_to_change][:4] in ['addf','addk','addl','addr','addb','addt']:
-                            rotation = random.choice([0,45,90,135,180,225,270])
-                            op_to_add=operator+"("+str(rotation)+")"
-                            item_to_add=random.choice(['B','H','N'])
-                            splitted_rules.insert(gene_to_change+2,item_to_add)
-                            splitted_rules.insert(gene_to_change+2,op_to_add)
+                case "add_rule":
+                    operator = random.choice([
+                        "addf",
+                        "addk",
+                        "addl",
+                        "addr",
+                        "addb",
+                        "addt",
+                        "movf",
+                        "movk",
+                        "movl",
+                        "movr",
+                        "movt",
+                        "movb",
+                    ])
+                    if operator in [
+                        "addf",
+                        "addk",
+                        "addl",
+                        "addr",
+                        "addb",
+                        "addt",
+                    ]:
+                        if splitted_rules[gene_to_change][:4] in [
+                            "addf",
+                            "addk",
+                            "addl",
+                            "addr",
+                            "addb",
+                            "addt",
+                        ]:
+                            rotation = random.choice([
+                                0,
+                                45,
+                                90,
+                                135,
+                                180,
+                                225,
+                                270,
+                            ])
+                            op_to_add = operator + "(" + str(rotation) + ")"
+                            item_to_add = random.choice(["B", "H", "N"])
+                            splitted_rules.insert(
+                                gene_to_change + 2, item_to_add
+                            )
+                            splitted_rules.insert(gene_to_change + 2, op_to_add)
                             # op_completed="ADDED : "+op_to_add+" "+item_to_add
-                        elif splitted_rules[gene_to_change][:4] in ['movf','movk','movl','movr','movb','movt']:
-                            rotation = random.choice([0,45,90,135,180,225,270])
-                            op_to_add=operator+"("+str(rotation)+")"
-                            item_to_add=random.choice(['B','H','N'])
-                            splitted_rules.insert(gene_to_change,item_to_add)
-                            splitted_rules.insert(gene_to_change,op_to_add)
+                        elif splitted_rules[gene_to_change][:4] in [
+                            "movf",
+                            "movk",
+                            "movl",
+                            "movr",
+                            "movb",
+                            "movt",
+                        ]:
+                            rotation = random.choice([
+                                0,
+                                45,
+                                90,
+                                135,
+                                180,
+                                225,
+                                270,
+                            ])
+                            op_to_add = operator + "(" + str(rotation) + ")"
+                            item_to_add = random.choice(["B", "H", "N"])
+                            splitted_rules.insert(gene_to_change, item_to_add)
+                            splitted_rules.insert(gene_to_change, op_to_add)
                             # op_completed="ADDED : "+op_to_add+" "+item_to_add
-                        elif splitted_rules[gene_to_change] in ['C','B','H','N']:
-                            rotation = random.choice([0,45,90,135,180,225,270])
-                            op_to_add=operator+"("+str(rotation)+")"
-                            item_to_add=random.choice(['B','H','N'])
-                            splitted_rules.insert(gene_to_change+1,item_to_add)
-                            splitted_rules.insert(gene_to_change+1,op_to_add)
+                        elif splitted_rules[gene_to_change] in [
+                            "C",
+                            "B",
+                            "H",
+                            "N",
+                        ]:
+                            rotation = random.choice([
+                                0,
+                                45,
+                                90,
+                                135,
+                                180,
+                                225,
+                                270,
+                            ])
+                            op_to_add = operator + "(" + str(rotation) + ")"
+                            item_to_add = random.choice(["B", "H", "N"])
+                            splitted_rules.insert(
+                                gene_to_change + 1, item_to_add
+                            )
+                            splitted_rules.insert(gene_to_change + 1, op_to_add)
                             # op_completed="ADDED : "+op_to_add+" "+item_to_add
-                    if operator in ['movf','movk','movl','movr','movb','movt']:
-                        if splitted_rules[gene_to_change][:4] in ['addf','addk','addl','addr','addb','addt']:
-                            splitted_rules.insert(gene_to_change+2,operator)
+                    if operator in [
+                        "movf",
+                        "movk",
+                        "movl",
+                        "movr",
+                        "movb",
+                        "movt",
+                    ]:
+                        if splitted_rules[gene_to_change][:4] in [
+                            "addf",
+                            "addk",
+                            "addl",
+                            "addr",
+                            "addb",
+                            "addt",
+                        ]:
+                            splitted_rules.insert(gene_to_change + 2, operator)
                             # op_completed="ADDED : "+operator
-                        elif splitted_rules[gene_to_change][:4] in ['movf','movk','movl','movr','movb','movt']:
-                            splitted_rules.insert(gene_to_change,operator)
+                        elif splitted_rules[gene_to_change][:4] in [
+                            "movf",
+                            "movk",
+                            "movl",
+                            "movr",
+                            "movb",
+                            "movt",
+                        ]:
+                            splitted_rules.insert(gene_to_change, operator)
                             # op_completed="ADDED : "+operator
-                        elif splitted_rules[gene_to_change] in ['C','B','H','N']:
-                            splitted_rules.insert(gene_to_change+1,operator)
+                        elif splitted_rules[gene_to_change] in [
+                            "C",
+                            "B",
+                            "H",
+                            "N",
+                        ]:
+                            splitted_rules.insert(gene_to_change + 1, operator)
                             # op_completed="ADDED : "+operator
-                case 'rm_rule':
-                    if splitted_rules[gene_to_change][:4] in ['addf','addk','addl','addr','addb','addt']:
+                case "rm_rule":
+                    if splitted_rules[gene_to_change][:4] in [
+                        "addf",
+                        "addk",
+                        "addl",
+                        "addr",
+                        "addb",
+                        "addt",
+                    ]:
                         # op_completed="REMOVED : "+splitted_rules[gene_to_change]+" "+splitted_rules[gene_to_change+1]
                         splitted_rules.pop(gene_to_change)
                         splitted_rules.pop(gene_to_change)
-                    elif splitted_rules[gene_to_change] in ['H','B','N']:
+                    elif splitted_rules[gene_to_change] in ["H", "B", "N"]:
                         # op_completed="REMOVED : "+splitted_rules[gene_to_change-1]+" "+splitted_rules[gene_to_change]
-                        if gene_to_change-1>=0:
-                            splitted_rules.pop(gene_to_change-1)
-                            splitted_rules.pop(gene_to_change-1)
-                    elif splitted_rules[gene_to_change][:4] in ['movf','movk','movl','movr','movt','movb']:
+                        if gene_to_change - 1 >= 0:
+                            splitted_rules.pop(gene_to_change - 1)
+                            splitted_rules.pop(gene_to_change - 1)
+                    elif splitted_rules[gene_to_change][:4] in [
+                        "movf",
+                        "movk",
+                        "movl",
+                        "movr",
+                        "movt",
+                        "movb",
+                    ]:
                         # op_completed="REMOVED : "+splitted_rules[gene_to_change]
                         splitted_rules.pop(gene_to_change)
             new_rule = ""
-            for j in range(0,len(splitted_rules)):
-                new_rule+=splitted_rules[j]+" "
-            if new_rule!="":
-                lsystem.rules[list(rules.keys())[rule_to_change]]=new_rule
+            for j in range(0, len(splitted_rules)):
+                new_rule += splitted_rules[j] + " "
+            if new_rule != "":
+                lsystem.rules[list(rules.keys())[rule_to_change]] = new_rule
             else:
-                lsystem.rules[list(rules.keys())[rule_to_change]]=lsystem.rules[list(rules.keys())[rule_to_change]]
+                lsystem.rules[list(rules.keys())[rule_to_change]] = (
+                    lsystem.rules[list(rules.keys())[rule_to_change]]
+                )
         return lsystem
 
 
@@ -363,15 +488,33 @@ def test() -> None:
     console.log("Random Tree:", random_tree)
 
     genome = TreeGenome()
-    genome.root = TreeNode(pheno_config.ModuleInstance(type=pheno_config.ModuleType.BRICK, rotation=pheno_config.ModuleRotationsIdx.DEG_90, links={}))
-    genome.root.front = TreeNode(pheno_config.ModuleInstance(type=pheno_config.ModuleType.BRICK, rotation=pheno_config.ModuleRotationsIdx.DEG_45, links={}))
-    genome.root.left = TreeNode(pheno_config.ModuleInstance(type=pheno_config.ModuleType.BRICK, rotation=pheno_config.ModuleRotationsIdx.DEG_45, links={}))
+    genome.root = TreeNode(
+        pheno_config.ModuleInstance(
+            type=pheno_config.ModuleType.BRICK,
+            rotation=pheno_config.ModuleRotationsIdx.DEG_90,
+            links={},
+        )
+    )
+    genome.root.front = TreeNode(
+        pheno_config.ModuleInstance(
+            type=pheno_config.ModuleType.BRICK,
+            rotation=pheno_config.ModuleRotationsIdx.DEG_45,
+            links={},
+        )
+    )
+    genome.root.left = TreeNode(
+        pheno_config.ModuleInstance(
+            type=pheno_config.ModuleType.BRICK,
+            rotation=pheno_config.ModuleRotationsIdx.DEG_45,
+            links={},
+        )
+    )
     tree_mutator = TreeMutator()
-    mutated_genome = tree_mutator.random_subtree_replacement(genome, max_subtree_depth=1)
+    mutated_genome = tree_mutator.random_subtree_replacement(
+        genome, max_subtree_depth=1
+    )
     console.log("Original Genome:", genome)
     console.log("Mutated Genome:", mutated_genome)
-
-
 
 
 if __name__ == "__main__":
