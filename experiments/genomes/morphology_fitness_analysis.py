@@ -7,7 +7,7 @@ import networkx as nx
 import numpy as np
 
 # Import the refactored metrics
-from metrics import (
+from experiments.genomes.metrics import (
     calculate_similarity_descriptor,
     calculate_similarity_ted,
     compute_6d_descriptor,

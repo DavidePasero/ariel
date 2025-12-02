@@ -19,12 +19,19 @@
 
 This project uses [uv](https://docs.astral.sh/uv/).
 
-To run the code examples please do
+After setting config.toml with the settings you want;
+To run the experiments for reproducibility use:
 
 ```bash
+cd ariel
 uv venv
 uv sync
-uv run examples/0_render_single_frame.py
+python -m experiments.genomes.run_experiment --mode single
+```
+
+To start a dash dashboard use:
+```bash
+python -m experiments.genomes.dashboard_manager __dashboard_type__ --db_paths __your/path/to/database.db__
 ```
 
 <!-- ## TODO: Installation

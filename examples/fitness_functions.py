@@ -45,7 +45,6 @@ class PreprocessFunc(Protocol):
     def __call__(
         self,
         config: EASettings,
-        ea: EA,
     ) -> None: ...
 
 

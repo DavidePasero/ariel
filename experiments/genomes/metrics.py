@@ -43,44 +43,51 @@ def _nx_to_zss_node(graph: nx.DiGraph, node_idx) -> zss.Node:
     """
     Recursively converts a NetworkX node and its children to a zss.Node.
     """
-    # 1. Get the label (module_type)
-    # Adjust 'module_type' if your node attribute key is different (e.g., 'type')
     label = graph.nodes[node_idx].get("module_type", "None")
-
-    # 2. Create the ZSS node
     z_node = zss.Node(label)
 
-    # 3. Recursively add children
-    # Note: We assume the DiGraph edges point Parent -> Child
+    # We sort children to ensure deterministic order if the graph structure is ambiguous
     children = sorted(list(graph.successors(node_idx)))
-
     for child_idx in children:
         z_node.addkid(_nx_to_zss_node(graph, child_idx))
-
     return z_node
 
 
-def calculate_similarity_ted(graph_a: nx.DiGraph, graph_b: nx.DiGraph) -> float:
+def calculate_similarity_ted(
+    individual: nx.DiGraph, target_graph: nx.DiGraph
+) -> float:
     """
-    Calculates distance using the Zhang-Shasha algorithm (via zss).
-    Time Complexity: O(N^3) or better, vs NP-Hard for generic graph edit distance.
+    Calculates Tree Edit Distance normalized by the size of the target graph.
     """
-    # 1. Find roots (Node with in_degree == 0)
-    # This assumes the graph is a valid rooted tree (Single root)
+    # 0. Handle empty graphs
+    len_a = len(individual)
+    len_b = len(target_graph)
+
+    if len_b == 0:
+        if len_a == 0:
+            return 0.0  # Both empty -> Identical
+        else:
+            return float(
+                "inf"
+            )  # Infinite distance if target is empty but source is not
+
+    # 1. Find roots
     try:
-        root_a = next(n for n, d in graph_a.in_degree() if d == 0)
-        root_b = next(n for n, d in graph_b.in_degree() if d == 0)
+        root_a = next(n for n, d in individual.in_degree() if d == 0)
+        root_b = next(n for n, d in target_graph.in_degree() if d == 0)
     except StopIteration:
-        # Fallback if graphs are empty or malformed
-        return 0.0 if len(graph_a) == len(graph_b) == 0 else float("inf")
+        # Handle cases where graphs might be cyclic or have no clear root
+        return float("inf")
 
     # 2. Convert NetworkX graphs to ZSS trees
-    tree_a = _nx_to_zss_node(graph_a, root_a)
-    tree_b = _nx_to_zss_node(graph_b, root_b)
+    tree_a = _nx_to_zss_node(individual, root_a)
+    tree_b = _nx_to_zss_node(target_graph, root_b)
 
-    # 3. Calculate Distance
-    # simple_distance assumes:
-    # - Insert cost: 1
-    # - Delete cost: 1
-    # - Update cost: 1 (if labels don't match), 0 (if they match)
-    return zss.simple_distance(tree_a, tree_b)
+    # 3. Calculate Raw Distance
+    raw_distance = zss.simple_distance(tree_a, tree_b)
+
+    # 4. Normalize
+    # This tells you: "How much error is there per node in the target?"
+    normalized_score = raw_distance / len_b
+
+    return normalized_score

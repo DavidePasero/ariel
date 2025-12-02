@@ -8,7 +8,7 @@ using the unified GenomeEAExperiment class.
 import argparse
 from pathlib import Path
 
-from experiment import GenomeEAExperiment
+from experiments.genomes.experiment import GenomeEAExperiment
 
 
 def main():
@@ -80,9 +80,7 @@ def main():
         print(f"  Database: {stats['db_file']}")
 
     elif args.mode == "multiple":
-        print(
-            f"Running {args.num_runs} experiments with config: {args.config}"
-        )
+        print(f"Running {args.num_runs} experiments with config: {args.config}")
         all_stats = experiment.run_multiple(
             num_runs=args.num_runs,
             parallel=args.parallel,

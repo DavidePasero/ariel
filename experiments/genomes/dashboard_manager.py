@@ -6,6 +6,7 @@ This module provides a centralized manager for loading databases and
 instantiating different dashboard types. It handles all database loading
 logic and provides a clean interface for different visualization modes.
 """
+
 import os.path
 from pathlib import Path
 from typing import List, Tuple, Dict, Any, Optional
@@ -63,7 +64,9 @@ class DashboardManager:
     def __init__(self):
         """Initialize the dashboard manager."""
         self.loaded_runs: List[Tuple[List[Population], DashboardConfig]] = []
-        self.loaded_genotypes: Dict[str, Tuple[List[Population], DashboardConfig]] = {}
+        self.loaded_genotypes: Dict[
+            str, Tuple[List[Population], DashboardConfig]
+        ] = {}
 
     def load_from_database(
         self, db_path: Path, genotype_label: Optional[str] = None
@@ -99,7 +102,9 @@ class DashboardManager:
                     select(Individual).where(Individual.time_of_birth == gen)
                 ).all()
 
-                population = [Individual(**ind.model_dump()) for ind in individuals]
+                population = [
+                    Individual(**ind.model_dump()) for ind in individuals
+                ]
                 populations.append(population)
 
         # Load config - try JSON first, then TOML fallback
@@ -127,7 +132,9 @@ class DashboardManager:
             return self._load_config_from_json(json_config_path)
 
         # Fallback to TOML config
-        console.log(f"No saved config found at {json_config_path}, trying TOML fallback")
+        console.log(
+            f"No saved config found at {json_config_path}, trying TOML fallback"
+        )
         config_path = db_path.parent / "config.toml"
         if not config_path.exists():
             # Try examples/config.toml as fallback
@@ -137,7 +144,9 @@ class DashboardManager:
             console.log(f"Loading TOML configuration from: {config_path}")
             return self._load_config_from_toml(config_path)
 
-        raise FileNotFoundError(f"No configuration file found for database {db_path}")
+        raise FileNotFoundError(
+            f"No configuration file found for database {db_path}"
+        )
 
     def _load_config_from_json(self, config_path: Path) -> DashboardConfig:
         """Load configuration from saved JSON file.
@@ -148,7 +157,7 @@ class DashboardManager:
         Returns:
             DashboardConfig object
         """
-        with open(config_path, 'r') as f:
+        with open(config_path, "r") as f:
             config_data = json.load(f)
 
         resolved = config_data["resolved_settings"]
@@ -215,8 +224,14 @@ class DashboardManager:
                 populations, config = self.load_from_database(db_path)
                 self.loaded_runs.append((populations, config))
 
-                run_name = run_names[i] if run_names and i < len(run_names) else f"Run {i+1}"
-                console.log(f"Loaded {run_name}: {len(populations)} generations")
+                run_name = (
+                    run_names[i]
+                    if run_names and i < len(run_names)
+                    else f"Run {i + 1}"
+                )
+                console.log(
+                    f"Loaded {run_name}: {len(populations)} generations"
+                )
 
             except Exception as e:
                 console.log(f"[red]Error loading {db_path}: {e}[/red]")
@@ -243,19 +258,27 @@ class DashboardManager:
                 # Determine genotype name
                 if genotype_names and i < len(genotype_names):
                     genotype_name = genotype_names[i]
-                elif hasattr(config, 'genotype_name'):
+                elif hasattr(config, "genotype_name"):
                     genotype_name = config.genotype_name.capitalize()
                 else:
-                    genotype_name = config.genotype.__name__.replace('Genotype', '')
+                    genotype_name = config.genotype.__name__.replace(
+                        "Genotype", ""
+                    )
 
                 self.loaded_genotypes[genotype_name] = (populations, config)
 
-                console.log(f"Loaded {genotype_name}: {len(populations)} generations")
+                console.log(
+                    f"Loaded {genotype_name}: {len(populations)} generations"
+                )
 
                 # Log additional config info if available
-                if hasattr(config, 'mutation_name') and hasattr(config, 'crossover_name'):
-                    console.log(f"  - Mutation: {config.mutation_name}, Crossover: {config.crossover_name}")
-                if hasattr(config, 'task'):
+                if hasattr(config, "mutation_name") and hasattr(
+                    config, "crossover_name"
+                ):
+                    console.log(
+                        f"  - Mutation: {config.mutation_name}, Crossover: {config.crossover_name}"
+                    )
+                if hasattr(config, "task"):
                     console.log(f"  - Task: {config.task}")
 
             except Exception as e:
@@ -266,7 +289,10 @@ class DashboardManager:
             raise ValueError("No genotypes successfully loaded!")
 
     def create_evolution_dashboard(
-        self, populations: List[Population], decoder: Any, config: DashboardConfig
+        self,
+        populations: List[Population],
+        decoder: Any,
+        config: DashboardConfig,
     ):
         """Create a single-run evolution dashboard.
 
@@ -278,12 +304,12 @@ class DashboardManager:
         Returns:
             EvolutionDashboard instance
         """
-        from evolution_dashboard import EvolutionDashboard
+        from experiments.genomes.evolution_dashboard import EvolutionDashboard
 
         return EvolutionDashboard(populations, decoder, config)
 
     def create_comparative_dashboard(
-        self, host: str = '127.0.0.1', port: int = 8051, debug: bool = True
+        self, host: str = "127.0.0.1", port: int = 8051, debug: bool = True
     ):
         """Create a comparative genotypes dashboard from loaded genotypes.
 
@@ -296,17 +322,26 @@ class DashboardManager:
             ComparativeEvolutionDashboard instance
         """
         if not self.loaded_genotypes:
-            raise ValueError("No genotypes loaded. Call load_multiple_genotypes() first.")
+            raise ValueError(
+                "No genotypes loaded. Call load_multiple_genotypes() first."
+            )
 
-        from comparative_dashboard import ComparativeEvolutionDashboard
+        from experiments.genomes.comparative_dashboard import (
+            ComparativeEvolutionDashboard,
+        )
 
-        console.log(f"Creating comparative dashboard with {len(self.loaded_genotypes)} genotypes")
+        console.log(
+            f"Creating comparative dashboard with {len(self.loaded_genotypes)} genotypes"
+        )
         dashboard = ComparativeEvolutionDashboard(self.loaded_genotypes)
         return dashboard
 
     def create_multiple_runs_dashboard(
-        self, run_names: Optional[List[str]] = None, host: str = '127.0.0.1',
-        port: int = 8052, debug: bool = True
+        self,
+        run_names: Optional[List[str]] = None,
+        host: str = "127.0.0.1",
+        port: int = 8052,
+        debug: bool = True,
     ):
         """Create a multiple runs dashboard from loaded runs.
 
@@ -322,17 +357,24 @@ class DashboardManager:
         if not self.loaded_runs:
             raise ValueError("No runs loaded. Call load_multiple_runs() first.")
 
-        from multiple_runs_dashboard import MultipleRunsDashboard
+        from experiments.genomes.multiple_runs_dashboard import (
+            MultipleRunsDashboard,
+        )
 
         if run_names is None:
-            run_names = [f"Run {i+1}" for i in range(len(self.loaded_runs))]
+            run_names = [f"Run {i + 1}" for i in range(len(self.loaded_runs))]
 
-        console.log(f"Creating multiple runs dashboard with {len(self.loaded_runs)} runs")
+        console.log(
+            f"Creating multiple runs dashboard with {len(self.loaded_runs)} runs"
+        )
         dashboard = MultipleRunsDashboard(self.loaded_runs, run_names)
         return dashboard
 
     def create_novelty_dashboard(
-        self, populations: List[Population], decoder: Any, config: DashboardConfig
+        self,
+        populations: List[Population],
+        decoder: Any,
+        config: DashboardConfig,
     ):
         """Create a single-run novelty search dashboard.
 
@@ -344,13 +386,16 @@ class DashboardManager:
         Returns:
             NoveltySearchDashboard instance
         """
-        from novelty_dashboard import NoveltySearchDashboard
+        from experiments.genomes.novelty_dashboard import NoveltySearchDashboard
 
         return NoveltySearchDashboard(populations, decoder, config)
 
     def create_novelty_multiple_runs_dashboard(
-        self, run_names: Optional[List[str]] = None, host: str = '127.0.0.1',
-        port: int = 8053, debug: bool = True
+        self,
+        run_names: Optional[List[str]] = None,
+        host: str = "127.0.0.1",
+        port: int = 8053,
+        debug: bool = True,
     ):
         """Create a novelty search multiple runs dashboard from loaded runs.
 
@@ -366,17 +411,25 @@ class DashboardManager:
         if not self.loaded_runs:
             raise ValueError("No runs loaded. Call load_multiple_runs() first.")
 
-        from multiple_runs_novelty_dashboard import MultipleRunsNoveltyDashboard
+        from experiments.genomes.multiple_runs_novelty_dashboard import (
+            MultipleRunsNoveltyDashboard,
+        )
 
         if run_names is None:
-            run_names = [f"Run {i+1}" for i in range(len(self.loaded_runs))]
+            run_names = [f"Run {i + 1}" for i in range(len(self.loaded_runs))]
 
-        console.log(f"Creating novelty search multiple runs dashboard with {len(self.loaded_runs)} runs")
+        console.log(
+            f"Creating novelty search multiple runs dashboard with {len(self.loaded_runs)} runs"
+        )
         dashboard = MultipleRunsNoveltyDashboard(self.loaded_runs, run_names)
         return dashboard
 
     def run_evolution_dashboard(
-        self, db_path: Path, host: str = '127.0.0.1', port: int = 8050, debug: bool = True
+        self,
+        db_path: Path,
+        host: str = "127.0.0.1",
+        port: int = 8050,
+        debug: bool = True,
     ):
         """Load and run a single evolution dashboard.
 
@@ -392,13 +445,19 @@ class DashboardManager:
         def decoder(individual: Individual):
             return config.genotype.from_json(individual.genotype).to_digraph()
 
-        dashboard = self.create_evolution_dashboard(populations, decoder, config)
+        dashboard = self.create_evolution_dashboard(
+            populations, decoder, config
+        )
         console.log(f"Starting Evolution Dashboard at http://{host}:{port}")
         dashboard.run(host=host, port=port, debug=debug)
 
     def run_comparative_dashboard(
-        self, db_paths: List[Path], genotype_names: Optional[List[str]] = None,
-        host: str = '127.0.0.1', port: int = 8051, debug: bool = True
+        self,
+        db_paths: List[Path],
+        genotype_names: Optional[List[str]] = None,
+        host: str = "127.0.0.1",
+        port: int = 8051,
+        debug: bool = True,
     ):
         """Load and run a comparative dashboard.
 
@@ -410,7 +469,9 @@ class DashboardManager:
             debug: Enable debug mode
         """
         if len(db_paths) > 3:
-            console.log("[yellow]Warning: Only first 3 databases will be used for comparison[/yellow]")
+            console.log(
+                "[yellow]Warning: Only first 3 databases will be used for comparison[/yellow]"
+            )
             db_paths = db_paths[:3]
 
         self.load_multiple_genotypes(db_paths, genotype_names)
@@ -419,8 +480,12 @@ class DashboardManager:
         dashboard.run(host=host, port=port, debug=debug)
 
     def run_multiple_runs_dashboard(
-        self, db_paths: List[Path], run_names: Optional[List[str]] = None,
-        host: str = '127.0.0.1', port: int = 8052, debug: bool = True
+        self,
+        db_paths: List[Path],
+        run_names: Optional[List[str]] = None,
+        host: str = "127.0.0.1",
+        port: int = 8052,
+        debug: bool = True,
     ):
         """Load and run a multiple runs dashboard.
 
@@ -434,12 +499,18 @@ class DashboardManager:
         if os.path.isdir(db_paths[0]):
             db_paths = glob.glob(str(db_paths[0]) + "/*.db")
         self.load_multiple_runs(db_paths, run_names)
-        dashboard = self.create_multiple_runs_dashboard(run_names, host, port, debug)
+        dashboard = self.create_multiple_runs_dashboard(
+            run_names, host, port, debug
+        )
         console.log(f"Starting Multiple Runs Dashboard at http://{host}:{port}")
         dashboard.run(host=host, port=port, debug=debug)
 
     def run_novelty_dashboard(
-        self, db_path: Path, host: str = '127.0.0.1', port: int = 8052, debug: bool = True
+        self,
+        db_path: Path,
+        host: str = "127.0.0.1",
+        port: int = 8052,
+        debug: bool = True,
     ):
         """Load and run a single novelty search dashboard.
 
@@ -456,12 +527,18 @@ class DashboardManager:
             return config.genotype.from_json(individual.genotype).to_digraph()
 
         dashboard = self.create_novelty_dashboard(populations, decoder, config)
-        console.log(f"Starting Novelty Search Dashboard at http://{host}:{port}")
+        console.log(
+            f"Starting Novelty Search Dashboard at http://{host}:{port}"
+        )
         dashboard.run(host=host, port=port, debug=debug)
 
     def run_novelty_multiple_runs_dashboard(
-        self, db_paths: List[Path], run_names: Optional[List[str]] = None,
-        host: str = '127.0.0.1', port: int = 8053, debug: bool = True
+        self,
+        db_paths: List[Path],
+        run_names: Optional[List[str]] = None,
+        host: str = "127.0.0.1",
+        port: int = 8053,
+        debug: bool = True,
     ):
         """Load and run a novelty search multiple runs dashboard.
 
@@ -475,8 +552,12 @@ class DashboardManager:
         if os.path.isdir(db_paths[0]):
             db_paths = glob.glob(str(db_paths[0]) + "/*.db")
         self.load_multiple_runs(db_paths, run_names)
-        dashboard = self.create_novelty_multiple_runs_dashboard(run_names, host, port, debug)
-        console.log(f"Starting Novelty Search Multiple Runs Dashboard at http://{host}:{port}")
+        dashboard = self.create_novelty_multiple_runs_dashboard(
+            run_names, host, port, debug
+        )
+        console.log(
+            f"Starting Novelty Search Multiple Runs Dashboard at http://{host}:{port}"
+        )
         dashboard.run(host=host, port=port, debug=debug)
 
 
@@ -489,23 +570,29 @@ def main():
     )
     parser.add_argument(
         "dashboard_type",
-        choices=["evolution", "comparative", "multiple-runs", "novelty", "novelty-multiple-runs"],
-        help="Type of dashboard to launch"
+        choices=[
+            "evolution",
+            "comparative",
+            "multiple-runs",
+            "novelty",
+            "novelty-multiple-runs",
+        ],
+        help="Type of dashboard to launch",
     )
     parser.add_argument(
         "--db_paths",
-        nargs='+',
+        nargs="+",
         required=True,
-        help="Path(s) to database file(s)"
+        help="Path(s) to database file(s)",
+    )
+    parser.add_argument("--names", nargs="+", help="Names for genotypes/runs")
+    parser.add_argument("--host", default="127.0.0.1", help="Dashboard host")
+    parser.add_argument(
+        "--port", type=int, help="Dashboard port (default depends on type)"
     )
     parser.add_argument(
-        "--names",
-        nargs='+',
-        help="Names for genotypes/runs"
+        "--no-debug", action="store_true", help="Disable debug mode"
     )
-    parser.add_argument("--host", default="127.0.0.1", help="Dashboard host")
-    parser.add_argument("--port", type=int, help="Dashboard port (default depends on type)")
-    parser.add_argument("--no-debug", action="store_true", help="Disable debug mode")
 
     args = parser.parse_args()
 
@@ -518,7 +605,9 @@ def main():
     try:
         if args.dashboard_type == "evolution":
             if len(db_paths) != 1:
-                console.log("[red]Error: Evolution dashboard requires exactly 1 database[/red]")
+                console.log(
+                    "[red]Error: Evolution dashboard requires exactly 1 database[/red]"
+                )
                 return
             port = args.port or 8050
             manager.run_evolution_dashboard(
@@ -528,20 +617,28 @@ def main():
         elif args.dashboard_type == "comparative":
             port = args.port or 8051
             manager.run_comparative_dashboard(
-                db_paths, genotype_names=args.names,
-                host=args.host, port=port, debug=not args.no_debug
+                db_paths,
+                genotype_names=args.names,
+                host=args.host,
+                port=port,
+                debug=not args.no_debug,
             )
 
         elif args.dashboard_type == "multiple-runs":
             port = args.port or 8052
             manager.run_multiple_runs_dashboard(
-                db_paths, run_names=args.names,
-                host=args.host, port=port, debug=not args.no_debug
+                db_paths,
+                run_names=args.names,
+                host=args.host,
+                port=port,
+                debug=not args.no_debug,
             )
 
         elif args.dashboard_type == "novelty":
             if len(db_paths) != 1:
-                console.log("[red]Error: Novelty dashboard requires exactly 1 database[/red]")
+                console.log(
+                    "[red]Error: Novelty dashboard requires exactly 1 database[/red]"
+                )
                 return
             port = args.port or 8052
             manager.run_novelty_dashboard(
@@ -551,8 +648,11 @@ def main():
         elif args.dashboard_type == "novelty-multiple-runs":
             port = args.port or 8053
             manager.run_novelty_multiple_runs_dashboard(
-                db_paths, run_names=args.names,
-                host=args.host, port=port, debug=not args.no_debug
+                db_paths,
+                run_names=args.names,
+                host=args.host,
+                port=port,
+                debug=not args.no_debug,
             )
 
     except Exception as e:
