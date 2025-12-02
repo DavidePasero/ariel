@@ -5,11 +5,11 @@
 [run]
 # Choose which genotype profile to use for this run.
 # One of: "integers", "tree", "lsystem", "cppn"
-genotype = "lsystem"
+genotype = "cppn"
 
 # Choose which (morphological) task we want to try
 # One of "evolve_to_copy", "evolve_to_copy_sequence_normal", "evolve_to_copy_sequence_reverse", "evolve_for_novelty",
-task = "evolve_for_novelty"
+task = "evolve_to_copy_sequence_reverse"
 
 [task.evolve_to_copy.params]
 target_robot_path = "examples/target_robots/large_robot_25.json"

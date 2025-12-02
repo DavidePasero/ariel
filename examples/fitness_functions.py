@@ -1,7 +1,9 @@
+import concurrent.futures
 from pathlib import Path
-from typing import Protocol
+from typing import Any, List, Protocol
 
 from ea_settings import EASettings
+from metrics import compute_6d_descriptor
 from scipy.spatial.distance import cdist
 
 from ariel.ec.a001 import Individual
@@ -9,7 +11,34 @@ from ariel.ec.a004 import EA
 
 type Population = list[Individual]
 
-from metrics import compute_6d_descriptor
+# --- Helper Functions for Parallel Execution ---
+# These must be defined at the module level to be picklable.
+
+
+def _eval_single_copy(
+    genotype_json: str, target_graph: Any, config: EASettings
+) -> float:
+    """Helper to evaluate a single individual against a target graph."""
+    # Note: We might need to re-import config/classes if they aren't available in the worker process,
+    # but usually passing 'config' is fine if it's picklable.
+    genotype = config.genotype.from_json(genotype_json)
+    ind_digraph = genotype.to_digraph()
+    fitness = config.morphology_analyzer.compute_fitness_score(
+        ind_digraph,
+        target_graph,
+    )
+    return fitness
+
+
+def _eval_single_descriptor(
+    genotype_json: str, config: EASettings
+) -> list[float]:
+    """Helper to compute descriptors for a single individual."""
+    genotype = config.genotype.from_json(genotype_json)
+    return compute_6d_descriptor(genotype.to_digraph())
+
+
+# -----------------------------------------------
 
 
 class PreprocessFunc(Protocol):
@@ -20,7 +49,6 @@ class PreprocessFunc(Protocol):
     ) -> None: ...
 
 
-# Types
 class FitnessFunc(Protocol):
     def __call__(
         self,
@@ -91,20 +119,42 @@ def preprocess_evolve_for_novelty(
 # ------------------------ Fitness Functions ------------------------ #
 
 
+def _parallel_eval_copy(
+    population: Population, config: EASettings, target_graph: Any
+) -> Population:
+    """Shared logic for parallelizing copy-based fitness."""
+
+    # Prepare arguments for map
+    # We create a list of arguments for each individual
+    # Note: 'target_graph' and 'config' might be large.
+    # If pickling overhead is high, we might need a different strategy (like initializing workers with global state).
+
+    genotypes = [ind.genotype for ind in population]
+
+    # Use ProcessPoolExecutor for CPU-bound tasks
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        # Submit all tasks
+        futures = [
+            executor.submit(_eval_single_copy, g_json, target_graph, config)
+            for g_json in genotypes
+        ]
+
+        # Collect results as they complete (in order)
+        results = [f.result() for f in futures]
+
+    # Assign results back to individuals
+    for ind, fit in zip(population, results):
+        ind.fitness = fit
+
+    return population
+
+
 @register_fitness("evolve_to_copy")
 def evolve_to_copy(
     population: Population, config: EASettings, ea: EA
 ) -> Population:
-    for ind in population:
-        genotype = config.genotype.from_json(ind.genotype)
-        # Convert to digraph
-        ind_digraph = genotype.to_digraph()
-        fitness = config.morphology_analyzer.compute_fitness_score(
-            ind_digraph,
-            config.morphology_analyzer.target_graphs[0],
-        )
-        ind.fitness = fitness
-    return population
+    target_graph = config.morphology_analyzer.target_graphs[0]
+    return _parallel_eval_copy(population, config, target_graph)
 
 
 @register_fitness("evolve_to_copy_sequence_normal")
@@ -112,23 +162,12 @@ def evolve_to_copy_sequence_normal(
     population: Population, config: EASettings, ea: EA
 ) -> Population:
     total_targets = len(config.task_params["target_robot_paths"])
-    # 1. Calculate the interval size
     interval = config.num_of_generations // total_targets
-    # 2. Calculate the raw index
     raw_index = ea.current_generation // interval
-    # 3. Clamp the index so it doesn't exceed the last target
-    #    (this handles the remainder of the division)
     current_objective = min(raw_index, total_targets - 1)
 
-    for ind in population:
-        genotype = config.genotype.from_json(ind.genotype)
-        ind_digraph = genotype.to_digraph()
-        fitness = config.morphology_analyzer.compute_fitness_score(
-            ind_digraph,
-            config.morphology_analyzer.target_graphs[current_objective],
-        )
-        ind.fitness = fitness
-    return population
+    target_graph = config.morphology_analyzer.target_graphs[current_objective]
+    return _parallel_eval_copy(population, config, target_graph)
 
 
 @register_fitness("evolve_to_copy_sequence_reverse")
@@ -137,21 +176,12 @@ def evolve_to_copy_sequence_reverse(
 ) -> Population:
     total_targets = len(config.task_params["target_robot_paths"])
     interval = config.num_of_generations // total_targets
-    # Calculate the reverse index and ensure it doesn't go below 0
     current_objective = max(
         0, total_targets - 1 - (ea.current_generation // interval)
     )
 
-    for ind in population:
-        genotype = config.genotype.from_json(ind.genotype)
-        # Convert to digraph
-        ind_digraph = genotype.to_digraph()
-        fitness = config.morphology_analyzer.compute_fitness_score(
-            ind_digraph,
-            config.morphology_analyzer.target_graphs[current_objective],
-        )
-        ind.fitness = fitness
-    return population
+    target_graph = config.morphology_analyzer.target_graphs[current_objective]
+    return _parallel_eval_copy(population, config, target_graph)
 
 
 @register_fitness("evolve_for_novelty")
