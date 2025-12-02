@@ -6,85 +6,91 @@
     {
       "type": "CORE",
       "rotation": "DEG_0",
-      "raw_id": 10992654752,
+      "raw_id": 5425921008,
       "id": 0
     },
     {
       "type": "HINGE",
       "rotation": "DEG_270",
-      "raw_id": 10992346384,
+      "raw_id": 5426252880,
       "id": 1
     },
     {
-      "type": "HINGE",
-      "rotation": "DEG_315",
-      "raw_id": 10992352336,
+      "type": "BRICK",
+      "rotation": "DEG_225",
+      "raw_id": 5426252928,
       "id": 2
     },
     {
-      "type": "BRICK",
-      "rotation": "DEG_270",
-      "raw_id": 10992352912,
+      "type": "HINGE",
+      "rotation": "DEG_0",
+      "raw_id": 5426252976,
       "id": 3
     },
     {
       "type": "BRICK",
-      "rotation": "DEG_180",
-      "raw_id": 10992346144,
+      "rotation": "DEG_270",
+      "raw_id": 5426253120,
       "id": 4
     },
     {
-      "type": "HINGE",
-      "rotation": "DEG_180",
-      "raw_id": 10992347296,
+      "type": "BRICK",
+      "rotation": "DEG_315",
+      "raw_id": 5426253024,
       "id": 5
     },
     {
-      "type": "HINGE",
-      "rotation": "DEG_270",
-      "raw_id": 10995302272,
+      "type": "BRICK",
+      "rotation": "DEG_45",
+      "raw_id": 5426253168,
       "id": 6
     },
     {
       "type": "BRICK",
-      "rotation": "DEG_0",
-      "raw_id": 10992349888,
+      "rotation": "DEG_225",
+      "raw_id": 5426253312,
       "id": 7
     },
     {
-      "type": "HINGE",
+      "type": "BRICK",
       "rotation": "DEG_270",
-      "raw_id": 10992352384,
+      "raw_id": 5426253504,
       "id": 8
     },
     {
       "type": "HINGE",
-      "rotation": "DEG_225",
-      "raw_id": 10992349456,
+      "rotation": "DEG_180",
+      "raw_id": 5426253456,
       "id": 9
     },
     {
       "type": "BRICK",
-      "rotation": "DEG_180",
-      "raw_id": 10992345664,
+      "rotation": "DEG_225",
+      "raw_id": 5426253552,
       "id": 10
     },
     {
       "type": "HINGE",
-      "rotation": "DEG_90",
-      "raw_id": 10992342736,
+      "rotation": "DEG_45",
+      "raw_id": 5426253600,
       "id": 11
     },
     {
       "type": "HINGE",
-      "rotation": "DEG_315",
-      "raw_id": 10992349600,
+      "rotation": "DEG_135",
+      "raw_id": 5426253840,
       "id": 12
+    },
+    {
+      "type": "HINGE",
+      "rotation": "DEG_225",
+      "raw_id": 5426253792,
+      "id": 13
     }
   ],
   "edges": [
     {
-      "face": "FRONT",
+      "face": "TOP",
       "source": 0,
       "target": 1
     },
@@ -94,39 +100,44 @@
       "target": 2
     },
     {
-      "face": "FRONT",
+      "face": "RIGHT",
       "source": 2,
       "target": 3
     },
     {
       "face": "LEFT",
-      "source": 3,
+      "source": 2,
       "target": 4
     },
     {
-      "face": "RIGHT",
+      "face": "TOP",
+      "source": 2,
+      "target": 8
+    },
+    {
+      "face": "BOTTOM",
       "source": 4,
       "target": 5
     },
     {
-      "face": "LEFT",
-      "source": 4,
+      "face": "FRONT",
+      "source": 5,
       "target": 6
     },
     {
-      "face": "FRONT",
-      "source": 6,
+      "face": "TOP",
+      "source": 5,
       "target": 7
     },
     {
       "face": "LEFT",
-      "source": 7,
-      "target": 8
-    },
-    {
-      "face": "FRONT",
       "source": 8,
       "target": 9
+    },
+    {
+      "face": "TOP",
+      "source": 8,
+      "target": 12
     },
     {
       "face": "FRONT",
@@ -134,14 +145,14 @@
       "target": 10
     },
     {
-      "face": "TOP",
+      "face": "FRONT",
       "source": 10,
       "target": 11
     },
     {
       "face": "FRONT",
-      "source": 11,
-      "target": 12
+      "source": 12,
+      "target": 13
     }
   ]
 }
