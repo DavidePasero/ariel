@@ -1,0 +1,59 @@
+{
+  "directed": true,
+  "multigraph": false,
+  "graph": {},
+  "nodes": [
+    {
+      "type": "CORE",
+      "rotation": "DEG_0",
+      "raw_id": 5425908912,
+      "id": 0
+    },
+    {
+      "type": "BRICK",
+      "rotation": "DEG_270",
+      "raw_id": 5425915968,
+      "id": 1
+    },
+    {
+      "type": "BRICK",
+      "rotation": "DEG_90",
+      "raw_id": 5425910832,
+      "id": 2
+    },
+    {
+      "type": "BRICK",
+      "rotation": "DEG_270",
+      "raw_id": 5425908624,
+      "id": 3
+    },
+    {
+      "type": "BRICK",
+      "rotation": "DEG_225",
+      "raw_id": 5425908864,
+      "id": 4
+    }
+  ],
+  "edges": [
+    {
+      "face": "BACK",
+      "source": 0,
+      "target": 1
+    },
+    {
+      "face": "BOTTOM",
+      "source": 1,
+      "target": 2
+    },
+    {
+      "face": "LEFT",
+      "source": 2,
+      "target": 3
+    },
+    {
+      "face": "TOP",
+      "source": 3,
+      "target": 4
+    }
+  ]
+}

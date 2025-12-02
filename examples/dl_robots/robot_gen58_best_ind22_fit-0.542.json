@@ -6,90 +6,84 @@
     {
       "type": "CORE",
       "rotation": "DEG_0",
-      "raw_id": 10992654752,
+      "raw_id": 5812044864,
       "id": 0
     },
     {
-      "type": "HINGE",
-      "rotation": "DEG_270",
-      "raw_id": 10992346384,
+      "type": "BRICK",
+      "rotation": "DEG_180",
+      "raw_id": 5812047696,
       "id": 1
     },
     {
       "type": "HINGE",
-      "rotation": "DEG_315",
-      "raw_id": 10992352336,
+      "rotation": "DEG_180",
+      "raw_id": 5812055184,
       "id": 2
-    },
-    {
-      "type": "BRICK",
-      "rotation": "DEG_270",
-      "raw_id": 10992352912,
-      "id": 3
-    },
-    {
-      "type": "BRICK",
-      "rotation": "DEG_180",
-      "raw_id": 10992346144,
-      "id": 4
-    },
-    {
-      "type": "HINGE",
-      "rotation": "DEG_180",
-      "raw_id": 10992347296,
-      "id": 5
-    },
-    {
-      "type": "HINGE",
-      "rotation": "DEG_270",
-      "raw_id": 10995302272,
-      "id": 6
-    },
-    {
-      "type": "BRICK",
-      "rotation": "DEG_0",
-      "raw_id": 10992349888,
-      "id": 7
-    },
-    {
-      "type": "HINGE",
-      "rotation": "DEG_270",
-      "raw_id": 10992352384,
-      "id": 8
-    },
-    {
-      "type": "HINGE",
-      "rotation": "DEG_225",
-      "raw_id": 10992349456,
-      "id": 9
-    },
-    {
-      "type": "BRICK",
-      "rotation": "DEG_180",
-      "raw_id": 10992345664,
-      "id": 10
     },
     {
       "type": "HINGE",
       "rotation": "DEG_90",
-      "raw_id": 10992342736,
-      "id": 11
+      "raw_id": 5812058304,
+      "id": 3
     },
     {
       "type": "HINGE",
-      "rotation": "DEG_315",
-      "raw_id": 10992349600,
-      "id": 12
+      "rotation": "DEG_225",
+      "raw_id": 5812058352,
+      "id": 4
+    },
+    {
+      "type": "BRICK",
+      "rotation": "DEG_180",
+      "raw_id": 5812058400,
+      "id": 5
+    },
+    {
+      "type": "BRICK",
+      "rotation": "DEG_45",
+      "raw_id": 5812058448,
+      "id": 6
+    },
+    {
+      "type": "HINGE",
+      "rotation": "DEG_180",
+      "raw_id": 5812058496,
+      "id": 7
+    },
+    {
+      "type": "HINGE",
+      "rotation": "DEG_180",
+      "raw_id": 5426280928,
+      "id": 8
+    },
+    {
+      "type": "HINGE",
+      "rotation": "DEG_180",
+      "raw_id": 5812058544,
+      "id": 9
+    },
+    {
+      "type": "BRICK",
+      "rotation": "DEG_135",
+      "raw_id": 5812058640,
+      "id": 10
+    },
+    {
+      "type": "BRICK",
+      "rotation": "DEG_0",
+      "raw_id": 5812058688,
+      "id": 11
     }
   ],
   "edges": [
     {
-      "face": "FRONT",
+      "face": "TOP",
       "source": 0,
       "target": 1
     },
     {
-      "face": "FRONT",
+      "face": "TOP",
       "source": 1,
       "target": 2
     },
@@ -99,18 +93,18 @@
       "target": 3
     },
     {
-      "face": "LEFT",
+      "face": "FRONT",
       "source": 3,
       "target": 4
     },
     {
-      "face": "RIGHT",
+      "face": "FRONT",
       "source": 4,
       "target": 5
     },
     {
       "face": "LEFT",
-      "source": 4,
+      "source": 5,
       "target": 6
     },
     {
@@ -119,8 +113,8 @@
       "target": 7
     },
     {
-      "face": "LEFT",
-      "source": 7,
+      "face": "TOP",
+      "source": 6,
       "target": 8
     },
     {
@@ -134,14 +128,9 @@
       "target": 10
     },
     {
-      "face": "TOP",
+      "face": "LEFT",
       "source": 10,
       "target": 11
-    },
-    {
-      "face": "FRONT",
-      "source": 11,
-      "target": 12
     }
   ]
 }

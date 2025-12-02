@@ -1,0 +1,356 @@
+{
+  "directed": true,
+  "multigraph": false,
+  "graph": {},
+  "nodes": [
+    {
+      "type": "CORE",
+      "rotation": "DEG_0",
+      "raw_id": 5512051696,
+      "id": 0
+    },
+    {
+      "type": "BRICK",
+      "rotation": "DEG_270",
+      "raw_id": 5511759680,
+      "id": 1
+    },
+    {
+      "type": "BRICK",
+      "rotation": "DEG_45",
+      "raw_id": 5511760592,
+      "id": 2
+    },
+    {
+      "type": "BRICK",
+      "rotation": "DEG_45",
+      "raw_id": 5511760160,
+      "id": 3
+    },
+    {
+      "type": "HINGE",
+      "rotation": "DEG_180",
+      "raw_id": 5511757952,
+      "id": 4
+    },
+    {
+      "type": "BRICK",
+      "rotation": "DEG_135",
+      "raw_id": 5512356032,
+      "id": 5
+    },
+    {
+      "type": "BRICK",
+      "rotation": "DEG_180",
+      "raw_id": 5511761696,
+      "id": 6
+    },
+    {
+      "type": "BRICK",
+      "rotation": "DEG_315",
+      "raw_id": 5511762224,
+      "id": 7
+    },
+    {
+      "type": "BRICK",
+      "rotation": "DEG_315",
+      "raw_id": 5511765824,
+      "id": 8
+    },
+    {
+      "type": "BRICK",
+      "rotation": "DEG_270",
+      "raw_id": 5511758960,
+      "id": 9
+    },
+    {
+      "type": "BRICK",
+      "rotation": "DEG_270",
+      "raw_id": 5511759920,
+      "id": 10
+    },
+    {
+      "type": "BRICK",
+      "rotation": "DEG_0",
+      "raw_id": 5553340496,
+      "id": 11
+    },
+    {
+      "type": "BRICK",
+      "rotation": "DEG_0",
+      "raw_id": 5512250672,
+      "id": 12
+    },
+    {
+      "type": "BRICK",
+      "rotation": "DEG_270",
+      "raw_id": 5511760352,
+      "id": 13
+    },
+    {
+      "type": "BRICK",
+      "rotation": "DEG_225",
+      "raw_id": 5511773216,
+      "id": 14
+    },
+    {
+      "type": "BRICK",
+      "rotation": "DEG_270",
+      "raw_id": 5511762848,
+      "id": 15
+    },
+    {
+      "type": "BRICK",
+      "rotation": "DEG_315",
+      "raw_id": 5511769424,
+      "id": 16
+    },
+    {
+      "type": "HINGE",
+      "rotation": "DEG_0",
+      "raw_id": 5511768944,
+      "id": 17
+    },
+    {
+      "type": "BRICK",
+      "rotation": "DEG_315",
+      "raw_id": 5511769904,
+      "id": 18
+    },
+    {
+      "type": "BRICK",
+      "rotation": "DEG_0",
+      "raw_id": 5511772304,
+      "id": 19
+    },
+    {
+      "type": "HINGE",
+      "rotation": "DEG_225",
+      "raw_id": 5511767504,
+      "id": 20
+    },
+    {
+      "type": "BRICK",
+      "rotation": "DEG_270",
+      "raw_id": 5512051072,
+      "id": 21
+    },
+    {
+      "type": "HINGE",
+      "rotation": "DEG_45",
+      "raw_id": 5511764384,
+      "id": 22
+    },
+    {
+      "type": "HINGE",
+      "rotation": "DEG_180",
+      "raw_id": 5512048432,
+      "id": 23
+    },
+    {
+      "type": "HINGE",
+      "rotation": "DEG_45",
+      "raw_id": 5512051024,
+      "id": 24
+    },
+    {
+      "type": "BRICK",
+      "rotation": "DEG_180",
+      "raw_id": 5512047280,
+      "id": 25
+    },
+    {
+      "type": "BRICK",
+      "rotation": "DEG_0",
+      "raw_id": 5511770528,
+      "id": 26
+    },
+    {
+      "type": "BRICK",
+      "rotation": "DEG_90",
+      "raw_id": 5512049104,
+      "id": 27
+    },
+    {
+      "type": "HINGE",
+      "rotation": "DEG_0",
+      "raw_id": 5511761456,
+      "id": 28
+    },
+    {
+      "type": "BRICK",
+      "rotation": "DEG_45",
+      "raw_id": 5511771872,
+      "id": 29
+    },
+    {
+      "type": "HINGE",
+      "rotation": "DEG_135",
+      "raw_id": 5511765584,
+      "id": 30
+    },
+    {
+      "type": "HINGE",
+      "rotation": "DEG_270",
+      "raw_id": 5511763664,
+      "id": 31
+    }
+  ],
+  "edges": [
+    {
+      "face": "BACK",
+      "source": 0,
+      "target": 1
+    },
+    {
+      "face": "LEFT",
+      "source": 1,
+      "target": 2
+    },
+    {
+      "face": "BOTTOM",
+      "source": 1,
+      "target": 11
+    },
+    {
+      "face": "RIGHT",
+      "source": 2,
+      "target": 3
+    },
+    {
+      "face": "TOP",
+      "source": 2,
+      "target": 5
+    },
+    {
+      "face": "BOTTOM",
+      "source": 2,
+      "target": 6
+    },
+    {
+      "face": "TOP",
+      "source": 3,
+      "target": 4
+    },
+    {
+      "face": "FRONT",
+      "source": 6,
+      "target": 7
+    },
+    {
+      "face": "TOP",
+      "source": 7,
+      "target": 8
+    },
+    {
+      "face": "BOTTOM",
+      "source": 8,
+      "target": 9
+    },
+    {
+      "face": "FRONT",
+      "source": 9,
+      "target": 10
+    },
+    {
+      "face": "FRONT",
+      "source": 11,
+      "target": 12
+    },
+    {
+      "face": "RIGHT",
+      "source": 11,
+      "target": 23
+    },
+    {
+      "face": "LEFT",
+      "source": 11,
+      "target": 24
+    },
+    {
+      "face": "TOP",
+      "source": 11,
+      "target": 25
+    },
+    {
+      "face": "BOTTOM",
+      "source": 11,
+      "target": 27
+    },
+    {
+      "face": "FRONT",
+      "source": 12,
+      "target": 13
+    },
+    {
+      "face": "RIGHT",
+      "source": 12,
+      "target": 14
+    },
+    {
+      "face": "LEFT",
+      "source": 12,
+      "target": 15
+    },
+    {
+      "face": "LEFT",
+      "source": 15,
+      "target": 16
+    },
+    {
+      "face": "FRONT",
+      "source": 16,
+      "target": 17
+    },
+    {
+      "face": "TOP",
+      "source": 16,
+      "target": 21
+    },
+    {
+      "face": "FRONT",
+      "source": 17,
+      "target": 18
+    },
+    {
+      "face": "LEFT",
+      "source": 18,
+      "target": 19
+    },
+    {
+      "face": "FRONT",
+      "source": 19,
+      "target": 20
+    },
+    {
+      "face": "BOTTOM",
+      "source": 21,
+      "target": 22
+    },
+    {
+      "face": "LEFT",
+      "source": 25,
+      "target": 26
+    },
+    {
+      "face": "LEFT",
+      "source": 27,
+      "target": 28
+    },
+    {
+      "face": "TOP",
+      "source": 27,
+      "target": 29
+    },
+    {
+      "face": "TOP",
+      "source": 29,
+      "target": 30
+    },
+    {
+      "face": "FRONT",
+      "source": 30,
+      "target": 31
+    }
+  ]
+}

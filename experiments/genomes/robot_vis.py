@@ -236,7 +236,7 @@ def experiment(
 def main() -> None:
     """Entry point."""
     # ? ------------------------------------------------------------------ #
-    robot_graph = load_robot_json_file("examples/target_robots/spider_robot_25.json")
+    robot_graph = load_robot_json_file("examples/dl_robots/robot.json")
 
     # ? ------------------------------------------------------------------ #
     # Print all nodes
@@ -258,7 +258,7 @@ def main() -> None:
         tracker=tracker,
     )
 
-    experiment(robot=core, controller=ctrl, mode="video")
+    experiment(robot=core, controller=ctrl, mode="launcher")
 
     show_xpos_history(tracker.history["xpos"][0])
 

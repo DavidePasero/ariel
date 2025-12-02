@@ -15,14 +15,31 @@ from ariel import console
 from ariel.body_phenotypes.robogen_lite.constructor import (
     construct_mjspec_from_graph,
 )
-from ariel.utils.graph_ops import robot_json_to_digraph, load_robot_json_file
-
+from ariel.body_phenotypes.robogen_lite.decoders.hi_prob_decoding import (
+    HighProbabilityDecoder,
+    save_graph_as_json,
+)
+from ariel.ec.genotypes.nde import NeuralDevelopmentalEncoding
 from ariel.simulation.controllers.controller import Controller
 from ariel.simulation.environments import OlympicArena
 from ariel.utils.renderers import single_frame_renderer, video_renderer
 from ariel.utils.runners import simple_runner
 from ariel.utils.tracker import Tracker
 from ariel.utils.video_recorder import VideoRecorder
+from ariel import console
+from ariel.body_phenotypes.robogen_lite.constructor import construct_mjspec_from_graph
+from ariel.body_phenotypes.robogen_lite.decoders.tree_decoder import to_digraph
+from ariel.ec.a000 import TreeGenerator
+from ariel.ec.genotypes.tree.tree_genome import TreeGenome, TreeNode
+from ariel.body_phenotypes.robogen_lite import config
+from ariel.simulation.controllers.controller import Controller
+from ariel.simulation.environments import OlympicArena
+from ariel.utils.renderers import single_frame_renderer, video_renderer
+from ariel.utils.runners import simple_runner
+from ariel.utils.tracker import Tracker
+from ariel.utils.video_recorder import VideoRecorder
+from ariel.utils.morphological_descriptor import MorphologicalMeasures
+from ariel.utils.graph_ops import robot_json_to_digraph, load_robot_json_file
 
 # Type Checking
 if TYPE_CHECKING:
@@ -123,6 +140,149 @@ def show_xpos_history(history: list[float]) -> None:
     # Show results
     plt.show()
 
+def create_custom_genome() -> TreeGenome:
+    """Create your custom tree genome here.
+
+    Modify this function to define the robot structure you want to visualize.
+    You can use the TreeGenerator methods or manually build the tree.
+    """
+    # Option 1: Use predefined generators
+    # return TreeGenerator.star_shape(num_arms=4)
+    # return TreeGenerator.binary_tree(depth=3)
+    # return TreeGenerator.random_tree(max_depth=3, branching_prob=0.6)
+
+    return TreeGenerator.random_tree(max_depth=10)
+
+    #return TreeGenome.default_init()
+    # Option 2: Build manually
+    genome = TreeGenome.default_init()  # Starts with CORE module
+
+    # Add a brick to the front
+    front_brick = TreeNode(
+        config.ModuleInstance(
+            type=config.ModuleType.BRICK,
+            rotation=config.ModuleRotationsIdx.DEG_0,
+            links={}
+        )
+    )
+    genome.root.front = front_brick
+
+    # Add a hinge to the right of the core
+    right_hinge = TreeNode(
+        config.ModuleInstance(
+            type=config.ModuleType.HINGE,
+            rotation=config.ModuleRotationsIdx.DEG_90,
+            links={}
+        )
+    )
+    genome.root.right = right_hinge
+
+    # Add another brick to the front of the right hinge
+    hinge_front_brick = TreeNode(
+        config.ModuleInstance(
+            type=config.ModuleType.BRICK,
+            rotation=config.ModuleRotationsIdx.DEG_0,
+            links={}
+        )
+    )
+    right_hinge.front = hinge_front_brick
+
+    return genome
+
+def create_multi_limb_robot():
+    # Build a complex robot manually
+    genome = TreeGenome.default_init()  # Core
+
+    # Add main branches from core
+    for face in [config.ModuleFaces.FRONT, config.ModuleFaces.BACK,
+                 config.ModuleFaces.LEFT, config.ModuleFaces.RIGHT]:
+        # Add brick to each main direction
+        main_brick = TreeNode(config.ModuleInstance(
+            type=config.ModuleType.BRICK,
+            rotation=config.ModuleRotationsIdx.DEG_0,
+            links={}
+        ))
+        setattr(genome.root, face.name.lower(), main_brick)
+
+        # Add sub-branches from each main brick
+        for sub_face in [config.ModuleFaces.FRONT, config.ModuleFaces.LEFT, config.ModuleFaces.RIGHT]:
+            if sub_face in config.ALLOWED_FACES[config.ModuleType.BRICK]:
+                # Add hinge for articulation
+                hinge = TreeNode(config.ModuleInstance(
+                    type=config.ModuleType.HINGE,
+                    rotation=config.ModuleRotationsIdx.DEG_0,
+                    links={}
+                ))
+                try:
+                    setattr(main_brick, sub_face.name.lower(), hinge)
+
+                    # Add end effector brick
+                    end_brick = TreeNode(config.ModuleInstance(
+                        type=config.ModuleType.BRICK,
+                        rotation=config.ModuleRotationsIdx.DEG_0,
+                        links={}
+                    ))
+                    hinge.front = end_brick
+                except ValueError:
+                    # Face already occupied, skip
+                    pass
+    return genome
+
+def create_max_limb_robot():
+    print("\n" + "=" * 50)
+    print("Testing MAXIMUM LIMBS robot:")
+
+    # Build a robot that maximizes the number of limbs
+    genome = TreeGenome.default_init()  # Core
+
+    # Core has 6 faces: FRONT, BACK, LEFT, RIGHT, TOP, BOTTOM
+    # Each can have a brick with 5 faces: FRONT, LEFT, RIGHT, TOP, BOTTOM
+    # Each brick face can have a hinge with 1 face: FRONT
+    # Each hinge can have a final brick (limb endpoint)
+
+    core_faces = [config.ModuleFaces.FRONT, config.ModuleFaces.BACK,
+                  config.ModuleFaces.LEFT, config.ModuleFaces.RIGHT,
+                  config.ModuleFaces.TOP, config.ModuleFaces.BOTTOM]
+
+    limb_count = 0
+
+    for core_face in core_faces:
+        # Add brick to each core face
+        main_brick = TreeNode(config.ModuleInstance(
+            type=config.ModuleType.BRICK,
+            rotation=config.ModuleRotationsIdx.DEG_0,
+            links={}
+        ))
+        setattr(genome.root, core_face.name.lower(), main_brick)
+
+        # Each brick can have limbs on all its available faces
+        brick_faces = config.ALLOWED_FACES[config.ModuleType.BRICK]
+
+        for brick_face in brick_faces:
+            # Add hinge for articulation (limb joint)
+            hinge = TreeNode(config.ModuleInstance(
+                type=config.ModuleType.HINGE,
+                rotation=config.ModuleRotationsIdx.DEG_0,
+                links={}
+            ))
+
+            try:
+                setattr(main_brick, brick_face.name.lower(), hinge)
+
+                # Add end effector brick (limb endpoint)
+                end_brick = TreeNode(config.ModuleInstance(
+                    type=config.ModuleType.BRICK,
+                    rotation=config.ModuleRotationsIdx.DEG_0,
+                    links={}
+                ))
+                hinge.front = end_brick  # Hinge only has FRONT face
+                limb_count += 1
+
+            except ValueError:
+                # Face already occupied, skip
+                pass
+
+    return genome
 
 def nn_controller(
     model: mj.MjModel,
@@ -150,6 +310,41 @@ def nn_controller(
 
     # Scale the outputs
     return outputs * np.pi
+
+
+def morph_descriptors(robot_graph: Any):
+    # Analyze morphology using the phenotype graph
+    measures = MorphologicalMeasures(robot_graph)
+
+    print(f"\nMorphological measures:")
+    print(f"  Number of modules: {measures.num_modules}")
+    print(f"  Number of bricks: {measures.num_bricks}")
+    print(f"  Number of active hinges: {measures.num_active_hinges}")
+    print(f"  Bounding box: {measures.bounding_box_depth}x{measures.bounding_box_width}x{measures.bounding_box_height}")
+    print(f"  Coverage: {measures.coverage:.3f}")
+    print(f"  Branching: {measures.branching:.3f}")
+    print(f"  Limbs: {measures.limbs:.3f}")
+    print(f"  Length of limbs: {measures.length_of_limbs:.3f}")
+    print(f"  Symmetry: {measures.symmetry:.3f}")
+    print(f"  Joints: {measures.J: 3f}")
+    print(f"  Is 2D: {measures.is_2d}")
+    print(f" Size: {measures.size:.3f}")
+
+    return np.array([measures.B, measures.L, measures.E, measures.S, measures.P, measures.J])
+
+
+def simple_controller(model: mj.MjModel, data: mj.MjData) -> np.ndarray:
+    """Simple oscillating controller for robot movement."""
+    time = data.time
+    frequency = 2.0
+    amplitude = 0.8
+
+    controls = np.zeros(model.nu)
+    for i in range(model.nu):
+        phase_offset = i * np.pi / 4  # Different phase for each joint
+        controls[i] = amplitude * np.sin(frequency * time + phase_offset)
+
+    return controls
 
 
 def experiment(
@@ -236,7 +431,20 @@ def experiment(
 def main() -> None:
     """Entry point."""
     # ? ------------------------------------------------------------------ #
-    robot_graph = load_robot_json_file("examples/target_robots/spider_robot_25.json")
+
+    tree_genome = create_max_limb_robot()
+    tree_genome = TreeGenerator.binary_tree(10)
+
+    robot_graph = to_digraph(tree_genome)
+    robot_graph = load_robot_json_file("examples/target_robots/large_robot_25.json")
+    morph_descriptors(robot_graph)
+
+    # ? ------------------------------------------------------------------ #
+    # Save the graph to a file
+    #save_graph_as_json(
+    #    robot_graph,
+    #    DATA / "robot_graph.json",
+    #)
 
     # ? ------------------------------------------------------------------ #
     # Print all nodes
@@ -253,12 +461,12 @@ def main() -> None:
     # ? ------------------------------------------------------------------ #
     # Simulate the robot
     ctrl = Controller(
-        controller_callback_function=nn_controller,
+        controller_callback_function=simple_controller,
         # controller_callback_function=random_move,
         tracker=tracker,
     )
 
-    experiment(robot=core, controller=ctrl, mode="video")
+    experiment(robot=core, controller=ctrl, mode="launcher")
 
     show_xpos_history(tracker.history["xpos"][0])
 

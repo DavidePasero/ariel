@@ -17,14 +17,22 @@ from pathlib import Path
 import tomllib
 import json
 import os
+import base64
+from io import BytesIO
 from typing import List, Callable, Any, Dict, Tuple
 from rich.console import Console
 from sqlmodel import Session, create_engine, select
 from networkx.readwrite import json_graph
+import mujoco as mj
 
 from plotly_morphology_analysis import PlotlyMorphologyAnalyzer
 from ariel.ec.a001 import Individual
 from ariel.ec.genotypes.genotype_mapping import GENOTYPES_MAPPING
+from ariel.body_phenotypes.robogen_lite.constructor import (
+    construct_mjspec_from_graph,
+)
+from ariel.simulation.environments import OlympicArena
+from ariel.utils.renderers import single_frame_renderer
 
 console = Console()
 type Population = List[Individual]
@@ -54,6 +62,11 @@ class ComparativeEvolutionDashboard:
         # Pre-compute fitness timelines for all genotypes
         self._compute_fitness_timelines()
 
+        # Compute max generation across all genotypes
+        self.max_generation = max(
+            len(populations) for populations, _ in self.genotype_data.values()
+        )
+
         # Cache for computed descriptors per generation per genotype
         self._descriptor_cache = {}
 
@@ -66,6 +79,12 @@ class ComparativeEvolutionDashboard:
         # Create dl_robots directory if it doesn't exist
         self.dl_robots_path = Path("examples/dl_robots")
         self.dl_robots_path.mkdir(exist_ok=True)
+
+        # Store for robot visualization
+        self.current_robot_image = None
+
+        # Load target robot graphs for rendering
+        self._load_target_robot_graphs()
 
         # Color mapping for genotypes
         self.colors = {
@@ -99,6 +118,37 @@ class ComparativeEvolutionDashboard:
                     })
 
             self.fitness_timelines[genotype_name] = timeline
+
+    def _load_target_robot_graphs(self):
+        """Load target robot graphs from JSON files for all genotypes."""
+        self.target_robot_graphs = {}
+
+        for genotype_name, (populations, config) in self.genotype_data.items():
+            if hasattr(config, 'task_params') and 'target_robot_path' in config.task_params:
+                target_path = Path(config.task_params["target_robot_path"])
+
+                if target_path.is_file():
+                    target_files = [target_path]
+                elif target_path.is_dir():
+                    target_files = sorted(target_path.glob("*.json"))
+                else:
+                    target_files = []
+
+                for target_file in target_files:
+                    try:
+                        with open(target_file, 'r') as f:
+                            robot_data = json.load(f)
+                            robot_graph = json_graph.node_link_graph(robot_data, edges="edges")
+                            robot_name = target_file.stem
+                            # Avoid duplicates
+                            if robot_name not in self.target_robot_graphs:
+                                self.target_robot_graphs[robot_name] = robot_graph
+                    except Exception as e:
+                        print(f"Warning: Could not load target robot {target_file}: {e}")
+
+    def _get_target_robot_options(self):
+        """Get dropdown options for target robots."""
+        return [{'label': name, 'value': name} for name in self.target_robot_graphs.keys()]
 
     def _get_generation_data(self, genotype_name: str, generation: int):
         """Get or compute morphological data for a specific genotype and generation."""
@@ -201,6 +251,107 @@ class ComparativeEvolutionDashboard:
                 ], id='fitness-plot-container', style={'display': 'block'})
             ], style={'margin': '20px', 'marginBottom': 40}),
 
+            # Robot Viewer (collapsible)
+            html.Div([
+                html.Div([
+                    html.H3("Robot Viewer", style={'display': 'inline-block', 'margin': 0}),
+                    html.Button(
+                        "▶ Expand",
+                        id='robot-viewer-collapse-btn',
+                        style={
+                            'float': 'right',
+                            'background': 'none',
+                            'border': '1px solid #ccc',
+                            'padding': '5px 10px',
+                            'cursor': 'pointer',
+                            'borderRadius': '4px'
+                        }
+                    )
+                ], style={'marginBottom': '10px', 'overflow': 'hidden'}),
+                html.Div([
+                    # Target robot selector
+                    html.Div([
+                        html.Label("Select Target Robot:", style={'fontWeight': 'bold', 'marginRight': 10}),
+                        dcc.Dropdown(
+                            id='target-robot-dropdown',
+                            options=self._get_target_robot_options(),
+                            placeholder="Select a target robot to view...",
+                            style={'width': '300px', 'display': 'inline-block', 'verticalAlign': 'middle'}
+                        )
+                    ], style={'textAlign': 'center', 'marginBottom': 20}),
+
+                    # Direct robot selection
+                    html.Div([
+                        html.Hr(style={'margin': '20px 0'}),
+                        html.Label("Or Select Robot Directly:", style={'fontWeight': 'bold', 'marginBottom': 10, 'display': 'block'}),
+                        html.Div([
+                            # Genotype selector
+                            html.Div([
+                                html.Label("Genotype:", style={'marginRight': 5}),
+                                dcc.Dropdown(
+                                    id='direct-genotype-dropdown',
+                                    options=[{'label': name, 'value': name} for name in self.genotype_names],
+                                    value=self.genotype_names[0] if self.genotype_names else None,
+                                    style={'width': '150px'}
+                                )
+                            ], style={'display': 'inline-block', 'marginRight': 15, 'verticalAlign': 'top'}),
+                            # Generation selector
+                            html.Div([
+                                html.Label("Generation:", style={'marginRight': 5}),
+                                dcc.Dropdown(
+                                    id='direct-generation-dropdown',
+                                    options=[{'label': str(i), 'value': i} for i in range(self.max_generation)],
+                                    placeholder="Gen...",
+                                    style={'width': '100px'}
+                                )
+                            ], style={'display': 'inline-block', 'marginRight': 15, 'verticalAlign': 'top'}),
+                            # Individual selector (Best/Mean/Individual index)
+                            html.Div([
+                                html.Label("Individual:", style={'marginRight': 5}),
+                                dcc.Dropdown(
+                                    id='direct-individual-dropdown',
+                                    options=[
+                                        {'label': 'Best', 'value': 'best'},
+                                        {'label': 'Mean', 'value': 'mean'},
+                                    ],
+                                    placeholder="Select...",
+                                    style={'width': '120px'}
+                                )
+                            ], style={'display': 'inline-block', 'marginRight': 15, 'verticalAlign': 'top'}),
+                            # Load button
+                            html.Button(
+                                "Load Robot",
+                                id='direct-load-robot-btn',
+                                style={
+                                    'backgroundColor': '#4CAF50',
+                                    'color': 'white',
+                                    'border': 'none',
+                                    'padding': '8px 16px',
+                                    'cursor': 'pointer',
+                                    'borderRadius': '4px',
+                                    'verticalAlign': 'bottom'
+                                }
+                            )
+                        ], style={'textAlign': 'center'})
+                    ], style={'marginBottom': 20}),
+
+                    html.Div(id='robot-viewer-content', children=[
+                        html.P([
+                            "Click on any plot to view robots, select a target robot, or use direct selection above.",
+                            html.Br(),
+                            "The robot will be rendered using MuJoCo."
+                        ], style={'textAlign': 'center', 'color': '#666', 'fontSize': 14, 'lineHeight': '1.8'})
+                    ])
+                ], id='robot-viewer-container', style={'display': 'none'})
+            ], style={
+                'margin': '20px',
+                'marginBottom': 40,
+                'padding': '20px',
+                'backgroundColor': '#f9f9f9',
+                'borderRadius': '10px',
+                'border': '2px solid #ddd'
+            }),
+
             # Tabbed plots section
             html.Div([
                 dcc.Tabs(id='plot-tabs', value='single-feature-tab', children=[
@@ -235,6 +386,24 @@ class ComparativeEvolutionDashboard:
                 return {'display': 'none'}, "▶ Expand"
 
         @self.app.callback(
+            [Output('robot-viewer-container', 'style'),
+             Output('robot-viewer-collapse-btn', 'children')],
+            Input('robot-viewer-collapse-btn', 'n_clicks'),
+            prevent_initial_call=True
+        )
+        def toggle_robot_viewer(n_clicks):
+            """Toggle robot viewer visibility."""
+            if n_clicks is None:
+                n_clicks = 0
+
+            if n_clicks % 2 == 0:
+                # Hide viewer (starts collapsed)
+                return {'display': 'none'}, "▶ Expand"
+            else:
+                # Show viewer
+                return {'display': 'block'}, "▼ Collapse"
+
+        @self.app.callback(
             Output('fitness-comparison', 'figure'),
             Input('generation-slider', 'value')
         )
@@ -250,13 +419,23 @@ class ComparativeEvolutionDashboard:
                 df = pd.DataFrame(timeline)
                 color = self.colors.get(genotype_name, '#1f77b4')
 
+                # Add best fitness line
+                fig.add_trace(go.Scatter(
+                    x=df['generation'],
+                    y=df['best_fitness'],
+                    mode='lines+markers',
+                    name=f'{genotype_name} - Best',
+                    line=dict(color=color, width=2, dash='solid'),
+                    marker=dict(size=5, symbol='star')
+                ))
+
                 # Add mean fitness line
                 fig.add_trace(go.Scatter(
                     x=df['generation'],
                     y=df['avg_fitness'],
                     mode='lines+markers',
                     name=f'{genotype_name} - Mean',
-                    line=dict(color=color, width=2),
+                    line=dict(color=color, width=2, dash='dash'),
                     marker=dict(size=4)
                 ))
 
@@ -265,8 +444,8 @@ class ComparativeEvolutionDashboard:
                     x=df['generation'].tolist() + df['generation'][::-1].tolist(),
                     y=(df['avg_fitness'] + df['std_fitness']).tolist() +
                       (df['avg_fitness'] - df['std_fitness'])[::-1].tolist(),
-                    fill='tonext',
-                    fillcolor=f'rgba{tuple(list(px.colors.hex_to_rgb(color)) + [0.2])}',
+                    fill='toself',
+                    fillcolor=f'rgba{tuple(list(px.colors.hex_to_rgb(color)) + [0.15])}',
                     line=dict(color='rgba(255,255,255,0)'),
                     showlegend=False,
                     name=f'{genotype_name} - ±1 STD'
@@ -275,18 +454,29 @@ class ComparativeEvolutionDashboard:
                 # Highlight selected generation
                 if selected_generation < len(df):
                     selected_row = df.iloc[selected_generation]
+                    # Highlight best
+                    fig.add_trace(go.Scatter(
+                        x=[selected_row['generation']],
+                        y=[selected_row['best_fitness']],
+                        mode='markers',
+                        name=f'{genotype_name} - Best Gen {selected_generation}',
+                        marker=dict(color=color, size=14, symbol='star-open',
+                                  line=dict(width=3)),
+                        showlegend=False
+                    ))
+                    # Highlight mean
                     fig.add_trace(go.Scatter(
                         x=[selected_row['generation']],
                         y=[selected_row['avg_fitness']],
                         mode='markers',
-                        name=f'{genotype_name} - Gen {selected_generation}',
+                        name=f'{genotype_name} - Mean Gen {selected_generation}',
                         marker=dict(color=color, size=12, symbol='circle-open',
                                   line=dict(width=3)),
                         showlegend=False
                     ))
 
             fig.update_layout(
-                title='Mean Fitness Evolution with Standard Deviation',
+                title='Fitness Evolution: Best and Mean with Standard Deviation',
                 xaxis_title='Generation',
                 yaxis_title='Fitness',
                 height=500,
@@ -335,8 +525,6 @@ class ComparativeEvolutionDashboard:
         )
         def handle_direct_click(clickData, generation):
             """Handle direct click on scatter plot and save robot immediately."""
-            print(f"Direct click detected! clickData: {clickData}")  # Debug print
-
             if not clickData or 'points' not in clickData:
                 return "", {'display': 'none'}
 
@@ -344,8 +532,6 @@ class ComparativeEvolutionDashboard:
                 # Get the clicked point index
                 point = clickData['points'][0]
                 point_index = point.get('pointIndex', point.get('pointNumber', 0))
-
-                print(f"Point index: {point_index}")  # Debug print
 
                 # Get the individual from click data mapping
                 if not hasattr(self, '_click_data') or point_index not in self._click_data:
@@ -362,8 +548,6 @@ class ComparativeEvolutionDashboard:
                 click_info = self._click_data[point_index]
                 genotype_name = click_info['genotype']
                 individual_index = click_info['individual_index']
-
-                print(f"Saving robot for genotype: {genotype_name}, individual: {individual_index}")  # Debug print
 
                 # Get the individual data
                 cache_key = f"{genotype_name}_{generation}"
@@ -401,14 +585,31 @@ class ComparativeEvolutionDashboard:
                 robot_data = json_graph.node_link_data(robot_graph, edges="edges")
 
                 # Save to file
-                #filename = f"robot_{genotype_name}_gen{generation}_ind{individual_index}_fit{individual.fitness:.3f}.json"
                 filename = "robot.json"
                 filepath = self.dl_robots_path / filename
 
                 with open(filepath, 'w') as f:
                     json.dump(robot_data, f, indent=2)
 
-                return f"Robot saved: {filename}", {
+                # Render the robot
+                rendered_img = self._render_robot(robot_graph)
+
+                # Store the rendered robot for the viewer
+                if rendered_img:
+                    self.current_robot_image = {
+                        'image': rendered_img,
+                        'generation': generation,
+                        'individual': individual_index,
+                        'fitness': individual.fitness,
+                        'filename': filename,
+                        'genotype': genotype_name
+                    }
+
+                message = f"Robot saved: {filename}"
+                if rendered_img:
+                    message += " | Expand Robot Viewer to see it →"
+
+                return message, {
                     'display': 'block',
                     'backgroundColor': '#ccffcc',
                     'color': 'green',
@@ -419,7 +620,6 @@ class ComparativeEvolutionDashboard:
                 }
 
             except Exception as e:
-                print(f"Error in click handler: {e}")  # Debug print
                 return f"Error saving robot: {str(e)}", {
                     'display': 'block',
                     'backgroundColor': '#ffcccc',
@@ -429,6 +629,442 @@ class ComparativeEvolutionDashboard:
                     'padding': '10px',
                     'borderRadius': '5px'
                 }
+
+        # Callback to update robot viewer when scatter plot is clicked
+        @self.app.callback(
+            Output('robot-viewer-content', 'children'),
+            Input('individual-scatter', 'clickData'),
+            State('generation-slider', 'value'),
+            prevent_initial_call=True
+        )
+        def update_robot_viewer(clickData, generation):
+            """Update the robot viewer when a point is clicked."""
+            if clickData and self.current_robot_image is not None:
+                return self._render_robot_display(self.current_robot_image)
+            return dash.no_update
+
+        # Callback for target robot dropdown
+        @self.app.callback(
+            Output('robot-viewer-content', 'children', allow_duplicate=True),
+            Input('target-robot-dropdown', 'value'),
+            prevent_initial_call=True
+        )
+        def display_target_robot(target_name):
+            """Display selected target robot."""
+            if not target_name or target_name not in self.target_robot_graphs:
+                return dash.no_update
+
+            robot_graph = self.target_robot_graphs[target_name]
+            rendered_img = self._render_robot(robot_graph)
+
+            if rendered_img:
+                robot_info = {
+                    'image': rendered_img,
+                    'filename': f"{target_name}.json",
+                    'is_target': True,
+                    'name': target_name
+                }
+                return self._render_target_robot_display(robot_info)
+
+            return html.Div("Failed to render target robot", style={'textAlign': 'center', 'color': 'red'})
+
+        # Callback for direct robot selection
+        @self.app.callback(
+            [Output('robot-viewer-content', 'children', allow_duplicate=True),
+             Output('status-message', 'children', allow_duplicate=True),
+             Output('status-message', 'style', allow_duplicate=True)],
+            Input('direct-load-robot-btn', 'n_clicks'),
+            [State('direct-genotype-dropdown', 'value'),
+             State('direct-generation-dropdown', 'value'),
+             State('direct-individual-dropdown', 'value')],
+            prevent_initial_call=True
+        )
+        def load_direct_robot(n_clicks, genotype_name, generation, individual_type):
+            """Load robot directly from dropdown selections."""
+            if not n_clicks or genotype_name is None or generation is None or individual_type is None:
+                return dash.no_update, dash.no_update, dash.no_update
+
+            try:
+                populations, config = self.genotype_data[genotype_name]
+
+                if generation >= len(populations):
+                    generation = len(populations) - 1
+
+                population = populations[generation]
+                if not population:
+                    return dash.no_update, "No population data", {
+                        'display': 'block', 'backgroundColor': '#ffcccc', 'color': 'red',
+                        'textAlign': 'center', 'marginBottom': 20, 'padding': '10px', 'borderRadius': '5px'
+                    }
+
+                # Find the target individual
+                if individual_type == 'best':
+                    individual = max(population, key=lambda x: x.fitness)
+                    individual_idx = population.index(individual)
+                else:  # mean
+                    mean_fitness = sum(ind.fitness for ind in population) / len(population)
+                    individual = min(population, key=lambda x: abs(x.fitness - mean_fitness))
+                    individual_idx = population.index(individual)
+
+                # Decode and render
+                decoder = lambda ind: config.genotype.from_json(ind.genotype).to_digraph()
+                robot_graph = decoder(individual)
+
+                # Save robot
+                robot_data = json_graph.node_link_data(robot_graph, edges="edges")
+                filename = "robot.json"
+                filepath = self.dl_robots_path / filename
+
+                with open(filepath, 'w') as f:
+                    json.dump(robot_data, f, indent=2)
+
+                # Render the robot
+                rendered_img = self._render_robot(robot_graph)
+
+                if rendered_img:
+                    self.current_robot_image = {
+                        'image': rendered_img,
+                        'generation': generation,
+                        'individual': individual_idx,
+                        'fitness': individual.fitness,
+                        'filename': filename,
+                        'genotype': genotype_name
+                    }
+
+                    ind_str = "Best" if individual_type == 'best' else "Mean"
+                    message = f"{ind_str} robot from {genotype_name} Gen {generation} loaded"
+
+                    return (
+                        self._render_robot_display(self.current_robot_image),
+                        message,
+                        {
+                            'display': 'block', 'backgroundColor': '#ccffcc', 'color': 'green',
+                            'textAlign': 'center', 'marginBottom': 20, 'padding': '10px', 'borderRadius': '5px'
+                        }
+                    )
+
+                return dash.no_update, "Failed to render robot", {
+                    'display': 'block', 'backgroundColor': '#ffcccc', 'color': 'red',
+                    'textAlign': 'center', 'marginBottom': 20, 'padding': '10px', 'borderRadius': '5px'
+                }
+
+            except Exception as e:
+                return dash.no_update, f"Error: {str(e)}", {
+                    'display': 'block', 'backgroundColor': '#ffcccc', 'color': 'red',
+                    'textAlign': 'center', 'marginBottom': 20, 'padding': '10px', 'borderRadius': '5px'
+                }
+
+        # Click handler for fitness comparison plot
+        @self.app.callback(
+            [Output('status-message', 'children', allow_duplicate=True),
+             Output('status-message', 'style', allow_duplicate=True)],
+            Input('fitness-comparison', 'clickData'),
+            prevent_initial_call=True
+        )
+        def handle_fitness_comparison_click(clickData):
+            """Handle clicks on fitness comparison - renders best robot from clicked generation."""
+            if not clickData or 'points' not in clickData:
+                return "", {'display': 'none'}
+
+            try:
+                point = clickData['points'][0]
+                generation = int(point['x'])
+                return self._handle_generation_click(generation, mode='best')
+            except Exception as e:
+                return f"Error: {str(e)}", {
+                    'display': 'block',
+                    'backgroundColor': '#ffcccc',
+                    'color': 'red',
+                    'textAlign': 'center',
+                    'marginBottom': 20,
+                    'padding': '10px',
+                    'borderRadius': '5px'
+                }
+
+        # Update robot viewer for fitness comparison clicks
+        @self.app.callback(
+            Output('robot-viewer-content', 'children', allow_duplicate=True),
+            Input('fitness-comparison', 'clickData'),
+            prevent_initial_call=True
+        )
+        def update_robot_viewer_fitness(clickData):
+            """Update robot viewer when fitness comparison is clicked."""
+            if clickData and self.current_robot_image is not None:
+                return self._render_robot_display(self.current_robot_image)
+            return dash.no_update
+
+        # Click handler for single feature graph
+        @self.app.callback(
+            [Output('status-message', 'children', allow_duplicate=True),
+             Output('status-message', 'style', allow_duplicate=True)],
+            Input('single-feature-graph', 'clickData'),
+            prevent_initial_call=True
+        )
+        def handle_single_feature_click(clickData):
+            """Handle clicks on single feature graph - renders robot closest to mean fitness."""
+            if not clickData or 'points' not in clickData:
+                return "", {'display': 'none'}
+
+            try:
+                point = clickData['points'][0]
+                generation = int(point['x'])
+                return self._handle_generation_click(generation, mode='mean')
+            except Exception as e:
+                return f"Error: {str(e)}", {
+                    'display': 'block',
+                    'backgroundColor': '#ffcccc',
+                    'color': 'red',
+                    'textAlign': 'center',
+                    'marginBottom': 20,
+                    'padding': '10px',
+                    'borderRadius': '5px'
+                }
+
+        # Update robot viewer for single feature clicks
+        @self.app.callback(
+            Output('robot-viewer-content', 'children', allow_duplicate=True),
+            Input('single-feature-graph', 'clickData'),
+            prevent_initial_call=True
+        )
+        def update_robot_viewer_feature(clickData):
+            """Update robot viewer when single feature graph is clicked."""
+            if clickData and self.current_robot_image is not None:
+                return self._render_robot_display(self.current_robot_image)
+            return dash.no_update
+
+    def _handle_generation_click(self, generation: int, mode: str = 'best'):
+        """Handle click on a generation-based plot.
+
+        Args:
+            generation: The generation number clicked
+            mode: 'best' for best fitness, 'mean' for closest to mean fitness
+
+        Returns:
+            Tuple of (message, style) for status display
+        """
+        try:
+            # Use first genotype for simplicity
+            genotype_name = self.genotype_names[0]
+            populations, config = self.genotype_data[genotype_name]
+
+            if generation >= len(populations):
+                generation = len(populations) - 1
+
+            population = populations[generation]
+            if not population:
+                return "No population data", {'display': 'block', 'backgroundColor': '#ffcccc'}
+
+            # Find the target individual
+            if mode == 'best':
+                individual = max(population, key=lambda x: x.fitness)
+                individual_idx = population.index(individual)
+            else:  # mode == 'mean'
+                mean_fitness = sum(ind.fitness for ind in population) / len(population)
+                individual = min(population, key=lambda x: abs(x.fitness - mean_fitness))
+                individual_idx = population.index(individual)
+
+            # Decode and render
+            decoder = lambda ind: config.genotype.from_json(ind.genotype).to_digraph()
+            robot_graph = decoder(individual)
+
+            # Save robot
+            robot_data = json_graph.node_link_data(robot_graph, edges="edges")
+            filename = "robot.json"
+            filepath = self.dl_robots_path / filename
+
+            with open(filepath, 'w') as f:
+                json.dump(robot_data, f, indent=2)
+
+            # Render the robot
+            rendered_img = self._render_robot(robot_graph)
+
+            if rendered_img:
+                self.current_robot_image = {
+                    'image': rendered_img,
+                    'generation': generation,
+                    'individual': individual_idx,
+                    'fitness': individual.fitness,
+                    'filename': filename,
+                    'genotype': genotype_name
+                }
+
+            mode_str = "Best" if mode == 'best' else "Mean"
+            message = f"{mode_str} robot from Gen {generation} saved | Expand Robot Viewer →"
+
+            return message, {
+                'display': 'block',
+                'backgroundColor': '#ccffcc',
+                'color': 'green',
+                'textAlign': 'center',
+                'marginBottom': 20,
+                'padding': '10px',
+                'borderRadius': '5px'
+            }
+
+        except Exception as e:
+            return f"Error: {str(e)}", {
+                'display': 'block',
+                'backgroundColor': '#ffcccc',
+                'color': 'red',
+                'textAlign': 'center',
+                'marginBottom': 20,
+                'padding': '10px',
+                'borderRadius': '5px'
+            }
+
+    def _render_robot(self, robot_graph, width=800, height=600):
+        """Render a robot using MuJoCo and return base64-encoded image.
+
+        Args:
+            robot_graph: NetworkX DiGraph representing the robot
+            width: Image width in pixels
+            height: Image height in pixels
+
+        Returns:
+            Base64-encoded PNG image string, or None if rendering fails
+        """
+        try:
+            # Disable MuJoCo controller callback
+            mj.set_mjcb_control(None)
+
+            # Construct robot MuJoCo spec from graph
+            robot_spec = construct_mjspec_from_graph(robot_graph)
+
+            # Create world and spawn robot at origin
+            world = OlympicArena()
+            spawn_pos = [0, 0, 0.1]  # Spawn at world origin, slightly above ground
+            world.spawn(robot_spec.spec, spawn_position=spawn_pos)
+
+            # Compile model and create data
+            model = world.spec.compile()
+            data = mj.MjData(model)
+
+            # Create camera positioned to view the whole robot
+            camera = mj.MjvCamera()
+            camera.type = mj.mjtCamera.mjCAMERA_FREE
+            camera.lookat = [0, 0, 0.3]  # Look at slightly above ground
+            camera.distance = 2.5  # Distance from robot to see it fully
+            camera.azimuth = 45  # Angle around vertical axis
+            camera.elevation = -20  # Angle above horizontal
+
+            # Render single frame
+            img = single_frame_renderer(
+                model,
+                data,
+                steps=1,
+                save=False,
+                show=False,
+                camera=camera,
+                width=width,
+                height=height,
+            )
+
+            # Convert PIL Image to base64 string
+            buffered = BytesIO()
+            img.save(buffered, format="PNG")
+            img_str = base64.b64encode(buffered.getvalue()).decode()
+
+            return img_str
+
+        except Exception as e:
+            print(f"Error rendering robot: {str(e)}")
+            return None
+
+    def _render_robot_display(self, robot_info):
+        """Render robot display HTML for the robot viewer.
+
+        Args:
+            robot_info: Dictionary with robot information
+
+        Returns:
+            html.Div containing robot display
+        """
+        return html.Div([
+            # Robot metadata
+            html.Div([
+                html.Div([
+                    html.Strong("Genotype: "),
+                    html.Span(f"{robot_info.get('genotype', 'N/A')}")
+                ], style={'display': 'inline-block', 'marginRight': 30}),
+                html.Div([
+                    html.Strong("Generation: "),
+                    html.Span(f"{robot_info['generation']}")
+                ], style={'display': 'inline-block', 'marginRight': 30}),
+                html.Div([
+                    html.Strong("Individual: "),
+                    html.Span(f"{robot_info['individual']}")
+                ], style={'display': 'inline-block', 'marginRight': 30}),
+                html.Div([
+                    html.Strong("Fitness: "),
+                    html.Span(f"{robot_info['fitness']:.4f}")
+                ], style={'display': 'inline-block'}),
+            ], style={'textAlign': 'center', 'marginBottom': 20, 'fontSize': 14}),
+
+            # Rendered robot image
+            html.Div([
+                html.Img(
+                    src=f"data:image/png;base64,{robot_info['image']}",
+                    style={
+                        'maxWidth': '100%',
+                        'height': 'auto',
+                        'border': '2px solid #ddd',
+                        'borderRadius': '8px',
+                        'boxShadow': '0 4px 6px rgba(0,0,0,0.1)'
+                    }
+                )
+            ], style={'textAlign': 'center', 'padding': '20px'}),
+
+            # Additional info
+            html.Div([
+                html.P(
+                    f"Saved as: {robot_info['filename']}",
+                    style={'textAlign': 'center', 'color': '#666', 'fontSize': 12}
+                ),
+                html.P(
+                    "Camera view: 45° azimuth, -20° elevation, 2.5m distance",
+                    style={'textAlign': 'center', 'color': '#999', 'fontSize': 11}
+                )
+            ])
+        ])
+
+    def _render_target_robot_display(self, robot_info):
+        """Render target robot display HTML for the robot viewer.
+
+        Args:
+            robot_info: Dictionary with target robot information
+
+        Returns:
+            html.Div containing target robot display
+        """
+        return html.Div([
+            # Target robot header
+            html.Div([
+                html.Strong("Target Robot: ", style={'fontSize': 16}),
+                html.Span(f"{robot_info['name']}", style={'fontSize': 16, 'color': '#2e7d32'})
+            ], style={'textAlign': 'center', 'marginBottom': 20}),
+
+            # Rendered robot image
+            html.Div([
+                html.Img(
+                    src=f"data:image/png;base64,{robot_info['image']}",
+                    style={
+                        'maxWidth': '100%',
+                        'height': 'auto',
+                        'border': '3px solid #2e7d32',
+                        'borderRadius': '8px',
+                        'boxShadow': '0 4px 6px rgba(46,125,50,0.3)'
+                    }
+                )
+            ], style={'textAlign': 'center', 'padding': '20px'}),
+
+            # Additional info
+            html.Div([
+                html.P(
+                    f"File: {robot_info['filename']}",
+                    style={'textAlign': 'center', 'color': '#666', 'fontSize': 12}
+                )
+            ])
+        ])
 
     def _create_single_feature_plot(self):
         """Create single feature evolution comparison with feature selector."""
