@@ -25,6 +25,10 @@ if TYPE_CHECKING:
     from ariel.ec.genotypes.genotype import Genotype
     from ariel.ec.genotypes.tree.tree_genome import TreeGenome
 
+from ariel.ec.genotypes.genotype import MAX_MODULES
+# Max attempts to find valid crossover points
+MAX_ATTEMPTS = 20
+
 # Global constants
 SCRIPT_NAME = __file__.split("/")[-1][:-3]
 CWD = Path.cwd()
@@ -178,27 +182,38 @@ class TreeCrossover(Crossover):
     def normal(
         parent_i: TreeGenome,
         parent_j: TreeGenome,
+        koza_internal_node_prob: float = 0.9,
     ) -> tuple[TreeGenome, TreeGenome]:
         """
         Normal tree crossover:
-            - Pick a random node from Parent A (uniform over all nodes).
-            - Pick a random node from Parent B (uniform over all nodes).
+            - Pick a random node from Parent i (uniform over all nodes).
+            - Pick a random node from Parent j (uniform over all nodes).
             - Swap the selected subtrees.
 
         Returns two children produced by swapping the chosen subtrees.
         """
         parent_i_root, parent_j_root = parent_i.root, parent_j.root
 
-        nodes_a = parent_i_root.get_all_nodes(exclude_root=True)
-        nodes_b = parent_j_root.get_all_nodes(exclude_root=True)
+        nodes_i = parent_i_root.get_all_nodes(exclude_root=True)
+        nodes_j = parent_j_root.get_all_nodes(exclude_root=True)
 
         # If either tree is just a root, return copies of parents
-        if not nodes_a or not nodes_b:
+        if not nodes_i or not nodes_j:
             return parent_i.copy(), parent_j.copy()
 
         # Uniformly choose any node (root, internal, or leaf)
-        node_a = RNG.choice(nodes_a)
-        node_b = RNG.choice(nodes_b)
+        node_i = RNG.choice(nodes_i)
+        node_j = RNG.choice(nodes_j)
+
+        # With the crossover we don't want to exceed MAX_MODULES
+        i = 0
+        while (
+            parent_i.num_modules - node_i.num_descendants + node_j.num_descendants > MAX_MODULES or
+            parent_j.num_modules - node_j.num_descendants + node_i.num_descendants > MAX_MODULES):
+            node_i = RNG.choice(nodes_i)
+            node_j = RNG.choice(nodes_j)
+            i += 1
+            if i >= MAX_ATTEMPTS: return parent_i.copy(), parent_j.copy()
 
         # Preserve originals (same pattern as in koza_default)
         parent_i_old = parent_i.copy()
@@ -208,9 +223,9 @@ class TreeCrossover(Crossover):
 
         # Perform the swap
         with child1.root.enable_replacement():
-            child1.root.replace_node(node_a, node_b)
+            child1.root.replace_node(node_i, node_j)
         with child2.root.enable_replacement():
-            child2.root.replace_node(node_b, node_a)
+            child2.root.replace_node(node_j, node_i)
 
         # Restore parent handles for caller (as in your koza_default)
         parent_i = parent_i_old

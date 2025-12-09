@@ -20,6 +20,8 @@ def compute_6d_descriptor(robot_graph: nx.DiGraph) -> np.ndarray:
         measures.S,  # Symmetry
         P,  # Proportion
         measures.J,  # Joints
+        measures.num_bricks,
+        measures.num_active_hinges,
     ])
 
 

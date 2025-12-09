@@ -22,6 +22,10 @@ if TYPE_CHECKING:
     from ariel.ec.genotypes.genotype import Genotype
 import ariel.body_phenotypes.robogen_lite.config as pheno_config
 
+from ariel.ec.genotypes.genotype import MAX_MODULES
+# Max attempts to find valid mutation points
+MAX_ATTEMPTS = 20
+
 # Global constants
 SCRIPT_NAME = __file__.split("/")[-1][:-3]
 CWD = Path.cwd()
@@ -178,7 +182,12 @@ class TreeMutator(Mutation):
             max_depth=max_subtree_depth, branch_prob=branching_prob
         )
 
+        i=0
         node_to_replace = RNG.choice(all_nodes)
+        while node_to_replace.num_descendants + 1 + new_individual.num_modules > MAX_MODULES:
+            node_to_replace = RNG.choice(all_nodes)
+            i += 1
+            if i >= MAX_ATTEMPTS: return new_individual
 
         with new_individual.root.enable_replacement():
             new_individual.root.replace_node(node_to_replace, new_subtree)

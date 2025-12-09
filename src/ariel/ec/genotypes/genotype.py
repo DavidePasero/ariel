@@ -1,12 +1,13 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
-from enum import Enum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ariel.ec.mutations import Mutation
     from ariel.ec.crossovers import Crossover
     import networkx as nx
+
+MAX_MODULES = 30
 
 class Genotype(ABC):
     """Interface for different genotype types."""

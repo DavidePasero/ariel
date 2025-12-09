@@ -211,6 +211,11 @@ class TreeGenome(Genotype):
     def __copy__(self) -> "TreeGenome":
         """Support for copy.copy()."""
         return self.copy()
+    
+    @property
+    def num_modules(self) -> int:
+        """Return the total number of modules in the genome."""
+        return len(list(self._iter_nodes()))
 
     # ---------- JSON serialization ----------
 
@@ -456,6 +461,14 @@ class TreeNode:
             if child is not None:
                 result[face] = child
         return result
+    
+    @property
+    def num_descendants(self) -> int:
+        """Return the total number of descendant nodes."""
+        count = 0
+        for child in self.children.values():
+            count += 1 + child.num_descendants
+        return count
 
     def __eq__(self, other: object) -> bool:
         """Two nodes are equal if they have the same ID."""

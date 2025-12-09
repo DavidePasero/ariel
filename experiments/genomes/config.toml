@@ -13,7 +13,7 @@ task = "evolve_to_copy"
 
 [task.evolve_to_copy.params]
 target_robot_path = "experiments/genomes/target_robots/spider_robot_25.json"
-distance_metric = "ted"
+distance_metric = "descriptor"
 
 
 [task.evolve_to_copy_sequence_normal.params]
@@ -38,8 +38,8 @@ distance_metric = "descriptor"
 quiet = false
 is_maximisation = true
 first_generation_id = 0
-num_of_generations = 100
-target_population_size = 100
+num_of_generations = 500
+target_population_size = 1000
 
 # =========================
 # Data config
@@ -66,7 +66,7 @@ allowed_crossovers = ["koza_default", "normal"]
 
 [genotypes.tree.defaults]
 mutation = "random_subtree_replacement"
-crossover = "koza_default"
+crossover = "normal"
 
 [genotypes.tree.mutation.params]
 max_subtree_depth = 2
