@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from ariel.ec.genotypes.tree.tree_genome import TreeGenome
 
 from ariel.ec.genotypes.genotype import MAX_MODULES
+
 # Max attempts to find valid crossover points
 MAX_ATTEMPTS = 20
 
@@ -169,10 +170,8 @@ class TreeCrossover(Crossover):
         child1 = parent_i
         child2 = parent_j
 
-        with child1.root.enable_replacement():
-            child1.root.replace_node(node_a, node_b)
-        with child2.root.enable_replacement():
-            child2.root.replace_node(node_b, node_a)
+        child1.root.replace_node(node_a, node_b)
+        child2.root.replace_node(node_b, node_a)
 
         parent_i = parent_i_old
         parent_j = parent_j_old
@@ -208,12 +207,20 @@ class TreeCrossover(Crossover):
         # With the crossover we don't want to exceed MAX_MODULES
         i = 0
         while (
-            parent_i.num_modules - node_i.num_descendants + node_j.num_descendants > MAX_MODULES or
-            parent_j.num_modules - node_j.num_descendants + node_i.num_descendants > MAX_MODULES):
+            parent_i.num_modules
+            - node_i.num_descendants
+            + node_j.num_descendants
+            > MAX_MODULES
+            or parent_j.num_modules
+            - node_j.num_descendants
+            + node_i.num_descendants
+            > MAX_MODULES
+        ):
             node_i = RNG.choice(nodes_i)
             node_j = RNG.choice(nodes_j)
             i += 1
-            if i >= MAX_ATTEMPTS: return parent_i.copy(), parent_j.copy()
+            if i >= MAX_ATTEMPTS:
+                return parent_i.copy(), parent_j.copy()
 
         # Preserve originals (same pattern as in koza_default)
         parent_i_old = parent_i.copy()
@@ -222,10 +229,8 @@ class TreeCrossover(Crossover):
         child2 = parent_j
 
         # Perform the swap
-        with child1.root.enable_replacement():
-            child1.root.replace_node(node_i, node_j)
-        with child2.root.enable_replacement():
-            child2.root.replace_node(node_j, node_i)
+        child1.root.replace_node(node_i, node_j)
+        child2.root.replace_node(node_j, node_i)
 
         # Restore parent handles for caller (as in your koza_default)
         parent_i = parent_i_old

@@ -20,20 +20,27 @@ def compute_6d_descriptor(robot_graph: nx.DiGraph) -> np.ndarray:
         measures.S,  # Symmetry
         P,  # Proportion
         measures.J,  # Joints
+        measures.num_bricks,
+        measures.num_active_hinges,
     ])
 
 
 def calculate_similarity_descriptor(
-    graph_a: nx.DiGraph, graph_b: nx.DiGraph
+    individual: nx.DiGraph, target: nx.DiGraph
 ) -> float:
     """
     Calculates distance based on the Euclidean distance between 6D descriptors.
     Lower value means higher similarity.
     """
-    desc_a = compute_6d_descriptor(graph_a)
-    desc_b = compute_6d_descriptor(graph_b)
+    desc_ind = compute_6d_descriptor(individual)
+    desc_target = compute_6d_descriptor(target)
+    # Normalize by number of bricks and hinges to avoid bias towards larger robots
+    desc_ind[6] = desc_ind[6] / desc_target[6]
+    desc_target[6] = 1.0
+    desc_ind[7] = desc_ind[7] / desc_target[7]
+    desc_target[7] = 1.0
 
-    return np.linalg.norm(desc_a - desc_b)
+    return np.linalg.norm(desc_ind - desc_target)
 
 
 # --- OPTIMIZED TREE EDIT DISTANCE LOGIC ---
@@ -82,6 +89,9 @@ def calculate_similarity_ted(
     # 2. Convert NetworkX graphs to ZSS trees
     tree_a = _nx_to_zss_node(individual, root_a)
     tree_b = _nx_to_zss_node(target_graph, root_b)
+
+    # Print lables for debugging
+    # print("Tree A labels:", tree_a.label)
 
     # 3. Calculate Raw Distance
     raw_distance = zss.simple_distance(tree_a, tree_b)

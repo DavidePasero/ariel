@@ -9,6 +9,12 @@ logic and provides a clean interface for different visualization modes.
 
 import os.path
 from pathlib import Path
+import sys
+
+current_dir = Path(__file__).resolve().parent
+src_path = current_dir.parent.parent / "src"
+sys.path.append(str(src_path))
+
 from typing import List, Tuple, Dict, Any, Optional
 import json
 import tomllib

@@ -31,7 +31,10 @@ from ariel.ec.a004 import EA, EAStep
 from ariel.ec.genotypes.genotype_mapping import GENOTYPES_MAPPING
 
 from experiments.genomes.ea_settings import EASettings
-from experiments.genomes.fitness_functions import FITNESS_FUNCTIONS, PREPROCESSING_FUNCTIONS
+from experiments.genomes.fitness_functions import (
+    FITNESS_FUNCTIONS,
+    PREPROCESSING_FUNCTIONS,
+)
 from experiments.genomes.morphology_fitness_analysis import MorphologyAnalyzer
 
 # Global setup
@@ -144,9 +147,7 @@ class GenomeEAExperiment:
         crossover.set_which_crossover(crossover_name)
 
         # Determine output folder and database file name
-        output_folder = self.output_folder or Path(
-            cfg["data"]["output_folder"]
-        )
+        output_folder = self.output_folder or Path(cfg["data"]["output_folder"])
         if run_idx is not None:
             db_file_name = f"run{run_idx}.db"
         else:
@@ -548,9 +549,7 @@ class GenomeEAExperiment:
         if not quiet:
             console.log(f"Evolution completed!")
             console.log(f"Best fitness: {stats['best_fitness']:.4f}")
-            console.log(
-                f"Final avg fitness: {stats['final_avg_fitness']:.4f}"
-            )
+            console.log(f"Final avg fitness: {stats['final_avg_fitness']:.4f}")
 
         return stats
 
@@ -751,9 +750,7 @@ class GenomeEAExperiment:
             s["best_fitness"] for s in stats_list if s["best_fitness"]
         ]
         avg_fitnesses = [
-            s["final_avg_fitness"]
-            for s in stats_list
-            if s["final_avg_fitness"]
+            s["final_avg_fitness"] for s in stats_list if s["final_avg_fitness"]
         ]
 
         if best_fitnesses:
@@ -781,10 +778,6 @@ class GenomeEAExperiment:
         )
         console.print("\n[bold]Next Steps:[/bold]")
         console.print("  Visualize results with:")
-        console.print(
-            "    uv run examples/multiple_runs_dashboard.py \\"
-        )
-        db_paths = " ".join(
-            [f"{stats['db_file']}" for stats in stats_list[:3]]
-        )
+        console.print("    uv run examples/multiple_runs_dashboard.py \\")
+        db_paths = " ".join([f"{stats['db_file']}" for stats in stats_list[:3]])
         console.print(f"      --db_paths {db_paths}")

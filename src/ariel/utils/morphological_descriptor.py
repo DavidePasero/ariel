@@ -15,7 +15,7 @@ import ariel.body_phenotypes.robogen_lite.config as config
 TModule = TypeVar("TModule", bound=np.generic)
 
 
-class MorphologicalMeasures(Generic[TModule]):
+class MorphologicalMeasures(Generic[TModule]):  # noqa: PLR0904
     """
     Modular robot morphological measures for robot phenotype digraph.
 
@@ -130,7 +130,9 @@ class MorphologicalMeasures(Generic[TModule]):
         self.filled_bricks = self._calculate_filled_bricks()
         self.filled_active_hinges = self._calculate_filled_active_hinges()
         self.single_neighbour_bricks = self._calculate_single_neighbour_bricks()
-        self.single_neighbour_modules = self._calculate_single_neighbour_modules()
+        self.single_neighbour_modules = (
+            self._calculate_single_neighbour_modules()
+        )
         self.double_neighbour_bricks = self._calculate_double_neighbour_bricks()
         self.double_neighbour_active_hinges = (
             self._calculate_double_neighbour_active_hinges()
@@ -144,27 +146,36 @@ class MorphologicalMeasures(Generic[TModule]):
     def _find_core_node(self) -> Any:
         """Find the core node (root of the tree) in the graph."""
         # Find node with no predecessors (root)
-        roots = [node for node in self.graph.nodes() if self.graph.in_degree(node) == 0]
+        roots = [
+            node
+            for node in self.graph.nodes()
+            if self.graph.in_degree(node) == 0
+        ]
         if len(roots) != 1:
-            raise ValueError(f"Expected exactly one root node, found {len(roots)}")
+            raise ValueError(
+                f"Expected exactly one root node, found {len(roots)}"
+            )
         return roots[0]
 
     def _get_nodes_by_type(self, module_type: str) -> list[Any]:
         """Get all nodes of a specific module type."""
-        return [node for node in self.graph.nodes()
-                if self.graph.nodes[node].get('type') == module_type]
+        return [
+            node
+            for node in self.graph.nodes()
+            if self.graph.nodes[node].get("type") == module_type
+        ]
 
     def _calculate_is_2d(self) -> bool:
         """Check if all modules use only 90-degree rotations."""
         valid_rotations = {"DEG_0", "DEG_90", "DEG_180", "DEG_270"}
         return all(
-            self.graph.nodes[node].get('rotation', 'DEG_0') in valid_rotations
+            self.graph.nodes[node].get("rotation", "DEG_0") in valid_rotations
             for node in self.graph.nodes()
         )
 
     def _get_node_type(self, node: Any) -> str:
         """Get the module type of a node."""
-        return self.graph.nodes[node].get('type', 'UNKNOWN')
+        return self.graph.nodes[node].get("type", "UNKNOWN")
 
     def _get_allowed_faces(self, node: Any) -> list[str]:
         """Get allowed faces for a node based on its type."""
@@ -184,15 +195,17 @@ class MorphologicalMeasures(Generic[TModule]):
         # Check outgoing edges (children)
         for successor in self.graph.successors(node):
             edge_data = self.graph.get_edge_data(node, successor)
-            if edge_data and 'face' in edge_data:
-                connected_faces.append(edge_data['face'])
+            if edge_data and "face" in edge_data:
+                connected_faces.append(edge_data["face"])
         return connected_faces
 
     def _count_neighbors(self, node: Any) -> int:
         """Count total neighbors (predecessors + successors)."""
         return self.graph.in_degree(node) + self.graph.out_degree(node)
 
-    def _graph_to_grid(self, robot_graph: nx.DiGraph) -> tuple[NDArray[TModule], np.ndarray]:
+    def _graph_to_grid(
+        self, robot_graph: nx.DiGraph
+    ) -> tuple[NDArray[TModule], np.ndarray]:
         """Convert robot graph to 3D grid representation."""
         if robot_graph.number_of_nodes() == 0:
             raise ValueError("Cannot convert empty robot graph to grid")
@@ -200,7 +213,9 @@ class MorphologicalMeasures(Generic[TModule]):
         # Calculate positions of all nodes relative to core
         positions = {}
         core_node = self._find_core_node()
-        self._calculate_graph_positions(core_node, positions, np.array([0, 0, 0]))
+        self._calculate_graph_positions(
+            core_node, positions, np.array([0, 0, 0])
+        )
 
         # Find bounds
         if not positions:
@@ -223,7 +238,9 @@ class MorphologicalMeasures(Generic[TModule]):
 
         return grid, core_pos
 
-    def _calculate_graph_positions(self, node: Any, positions: dict, pos: np.ndarray) -> None:
+    def _calculate_graph_positions(
+        self, node: Any, positions: dict, pos: np.ndarray
+    ) -> None:
         """Recursively calculate 3D positions of all nodes in the graph."""
         positions[node] = pos.copy()
 
@@ -240,12 +257,14 @@ class MorphologicalMeasures(Generic[TModule]):
         # Process children (successors in the graph)
         for child in self.graph.successors(node):
             edge_data = self.graph.get_edge_data(node, child)
-            if edge_data and 'face' in edge_data:
-                face = edge_data['face']
+            if edge_data and "face" in edge_data:
+                face = edge_data["face"]
                 if face in face_directions:
                     child_pos = pos + face_directions[face]
                     if child not in positions:  # Avoid cycles
-                        self._calculate_graph_positions(child, positions, child_pos)
+                        self._calculate_graph_positions(
+                            child, positions, child_pos
+                        )
 
     def _calculate_core_is_filled(self) -> bool:
         """Check if the core has all its allowed faces filled."""
@@ -258,7 +277,8 @@ class MorphologicalMeasures(Generic[TModule]):
         return [
             brick
             for brick in self.bricks
-            if len(self._get_node_connections(brick)) == len(self._get_allowed_faces(brick))
+            if len(self._get_node_connections(brick))
+            == len(self._get_allowed_faces(brick))
         ]
 
     def _calculate_filled_active_hinges(self) -> list[Any]:
@@ -266,20 +286,21 @@ class MorphologicalMeasures(Generic[TModule]):
         return [
             hinge
             for hinge in self.active_hinges
-            if len(self._get_node_connections(hinge)) == len(self._get_allowed_faces(hinge))
+            if len(self._get_node_connections(hinge))
+            == len(self._get_allowed_faces(hinge))
         ]
 
     def _calculate_single_neighbour_bricks(self) -> list[Any]:
         """Get bricks that have no children (leaf nodes)."""
         return [
-            brick
-            for brick in self.bricks
-            if self.graph.out_degree(brick) == 0
+            brick for brick in self.bricks if self.graph.out_degree(brick) == 0
         ]
 
     def _calculate_single_neighbour_modules(self) -> list[Any]:
         """Get non-core modules that have only one neighbor (leaf nodes)."""
-        non_core_modules = [node for node in self.modules if self._get_node_type(node) != "CORE"]
+        non_core_modules = [
+            node for node in self.modules if self._get_node_type(node) != "CORE"
+        ]
         return [
             module
             for module in non_core_modules
@@ -289,9 +310,7 @@ class MorphologicalMeasures(Generic[TModule]):
     def _calculate_double_neighbour_bricks(self) -> list[Any]:
         """Get bricks that have exactly one child (connecting two modules)."""
         return [
-            brick
-            for brick in self.bricks
-            if self.graph.out_degree(brick) == 1
+            brick for brick in self.bricks if self.graph.out_degree(brick) == 1
         ]
 
     def _calculate_double_neighbour_active_hinges(self) -> list[Any]:
@@ -560,7 +579,8 @@ class MorphologicalMeasures(Generic[TModule]):
             return 0.0
 
         return (
-            self.num_double_neighbour_bricks + self.num_double_neighbour_active_hinges
+            self.num_double_neighbour_bricks
+            + self.num_double_neighbour_active_hinges
         ) / self.potential_double_neighbour_bricks_and_active_hinges
 
     @property
@@ -573,7 +593,9 @@ class MorphologicalMeasures(Generic[TModule]):
         :returns: The volume.
         """
         return (
-            self.bounding_box_width * self.bounding_box_height * self.bounding_box_depth
+            self.bounding_box_width
+            * self.bounding_box_height
+            * self.bounding_box_depth
         )
 
     @property
@@ -679,7 +701,7 @@ class MorphologicalMeasures(Generic[TModule]):
 
     @property
     def size(self) -> float:
-    #TODO check if m_max is fine like this!!
+        # TODO check if m_max is fine like this!!
         """Size S = m / m_max (proportion of occupied volume).
 
         m = number of modules
