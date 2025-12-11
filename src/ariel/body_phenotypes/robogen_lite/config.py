@@ -54,13 +54,13 @@ class ModuleRotationsTheta(Enum):
     """Enum for module rotations in degrees."""
 
     DEG_0 = 0
-    DEG_45 = 45
+    # DEG_45 = 45
     DEG_90 = 90
-    DEG_135 = 135
+    # DEG_135 = 135
     DEG_180 = 180
-    DEG_225 = 225
+    # DEG_225 = 225
     DEG_270 = 270
-    DEG_315 = 315
+    # DEG_315 = 315
 
 
 class ModuleInstance(BaseModel):

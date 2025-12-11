@@ -131,10 +131,16 @@ class GenomeEAExperiment:
             "crossover", gblock["defaults"]["crossover"]
         )
         task = cfg["run"]["task"]
+        include_diversity = cfg["run"]["include_diversity_measure"]
         mutation_params = gblock.get("mutation", {}).get("params", {})
         crossover_params = gblock.get("crossover", {}).get("params", {})
 
         task_params = cfg["task"].get(task, {}).get("params", {})
+        include_diversity_measure_params = (
+            cfg["task"].get("evolve_for_novelty", {}).get("params", {})
+            if include_diversity
+            else {}
+        )
         morphology_analyzer = MorphologyAnalyzer(
             metric=task_params.get("distance_metric", "descriptor"),
         )
@@ -167,6 +173,8 @@ class GenomeEAExperiment:
             crossover=crossover,
             crossover_params=crossover_params,
             task=task,
+            include_diversity=include_diversity,
+            include_diversity_measure_params=include_diversity_measure_params,
             task_params=task_params,
             morphology_analyzer=morphology_analyzer,
             output_folder=output_folder,
@@ -290,6 +298,16 @@ class GenomeEAExperiment:
             EAStep("crossover", partial(self._crossover, config=config)),
             EAStep("mutation", partial(self._mutation, config=config)),
             EAStep("evaluation", partial(self._evaluate, config=config)),
+            *(
+                [
+                    EAStep(
+                        "diversity_evaluation",
+                        partial(self._diversity_evaluate, config=config),
+                    ),
+                ]
+                if config.include_diversity
+                else []
+            ),
             EAStep(
                 "survivor_selection",
                 partial(self._survivor_selection, config=config),
@@ -426,6 +444,34 @@ class GenomeEAExperiment:
         population = fitness_function(population, config, ea)
         for ind in population:
             ind.requires_eval = False
+        return population
+
+    def _diversity_evaluate(
+        self, population: Population, config: EASettings, ea: EA | None = None
+    ) -> Population:
+        """Evaluate diversity of individuals. Only used when we don't have an evolve_for_novelty task.
+
+        Parameters
+        ----------
+        population : Population
+            Current population
+        config : EASettings
+            Configuration settings
+        ea : EA | None, optional
+            EA instance, by default None
+
+        Returns
+        -------
+        Population
+            Population with diversity values updated
+        """
+        fitness_function = FITNESS_FUNCTIONS["evolve_for_novelty"]
+        population = fitness_function(
+            population,
+            config,
+            ea,
+            is_fitness_function=False,
+        )
         return population
 
     def _survivor_selection(

@@ -19,8 +19,6 @@ def _eval_single_copy(
     genotype_json: str, target_graph: Any, config: EASettings
 ) -> float:
     """Helper to evaluate a single individual against a target graph."""
-    # Note: We might need to re-import config/classes if they aren't available in the worker process,
-    # but usually passing 'config' is fine if it's picklable.
     genotype = config.genotype.from_json(genotype_json)
     ind_digraph = genotype.to_digraph()
     fitness = config.morphology_analyzer.compute_fitness_score(
@@ -30,6 +28,15 @@ def _eval_single_copy(
     return fitness
 
 
+def _eval_single_descriptor(
+    genotype_json: str, config: EASettings
+) -> list[float]:
+    """Helper to compute descriptors for a single individual in parallel."""
+    genotype = config.genotype.from_json(genotype_json)
+    # Compute the descriptor (CPU intensive)
+    return compute_6d_descriptor(genotype.to_digraph())
+
+
 # -----------------------------------------------
 
 
@@ -37,6 +44,7 @@ class PreprocessFunc(Protocol):
     def __call__(
         self,
         config: EASettings,
+        ea: EA,
     ) -> None: ...
 
 
@@ -124,7 +132,6 @@ def _parallel_eval_copy(
 
     # Use ProcessPoolExecutor for CPU-bound tasks
     with concurrent.futures.ProcessPoolExecutor() as executor:
-        # Submit all tasks
         futures = [
             executor.submit(_eval_single_copy, g_json, target_graph, config)
             for g_json in genotypes
@@ -133,7 +140,6 @@ def _parallel_eval_copy(
         # Collect results as they complete (in order)
         results = [f.result() for f in futures]
 
-    # Assign results back to individuals
     for ind, fit in zip(population, results):
         ind.fitness = fit
 
@@ -177,20 +183,12 @@ def evolve_to_copy_sequence_reverse(
 
 @register_fitness("evolve_for_novelty")
 def evolve_for_novelty(
-    population: Population, config: EASettings, ea: EA
+    population: Population,
+    config: EASettings,
+    ea: EA,
+    is_fitness_function: bool = True,
 ) -> Population:
-    robot_descriptors = []
-
-    def _get_descriptors_and_append(
-        population: Population, robot_descriptors: list
-    ):
-        for ind in population:
-            genotype = config.genotype.from_json(ind.genotype)
-            measures = compute_6d_descriptor(genotype.to_digraph())
-            robot_descriptors.append(measures)
-        return robot_descriptors
-
-    # Get archived population
+    # 1. Fetch archived population (Serial DB operation)
     ea.fetch_population(
         only_alive=False,
         custom_logic=(
@@ -198,36 +196,63 @@ def evolve_for_novelty(
             Individual.tags_["novel"],
         ),
     )
-
     old_population = ea.population
-    # Append archived individuals' descriptors
-    robot_descriptors = _get_descriptors_and_append(
-        old_population,
-        robot_descriptors,
-    )
 
-    # Append robot descriptors with current population
-    robot_descriptors = _get_descriptors_and_append(
-        population,
-        robot_descriptors,
-    )
+    # 2. Combine populations to calculate descriptors in one batch
+    all_individuals = old_population + population
+    genotypes = [ind.genotype for ind in all_individuals]
 
+    # 3. Parallelize Descriptor Calculation (CPU bound)
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        futures = [
+            executor.submit(_eval_single_descriptor, g_json, config)
+            for g_json in genotypes
+        ]
+        all_descriptors = [f.result() for f in futures]
+
+    # 4. Compute Distance Matrix (Fast enough to run serially)
     distance_matrix = cdist(
-        robot_descriptors,
-        robot_descriptors,
+        all_descriptors,
+        all_descriptors,
         metric="euclidean",
     )
 
-    # Compute novelty scores
+    task_params = (
+        config.task_params
+        if is_fitness_function
+        else config.include_diversity_measure_params
+    )
+
+    # 5. Compute novelty scores
+    # We must offset indices because distance_matrix includes the archive at the start
+    archive_size = len(old_population)
+
     for idx, ind in enumerate(population):
-        # Exclude self-distance by setting it to infinity
-        distances = distance_matrix[idx]
-        distances[idx] = float("inf")
-        # Compute average distance to k nearest neighbors, making sure k does not exceed population size
-        k = min(config.task_params["n_points_to_consider"], len(population) - 1)
-        nearest_distances = sorted(distances)[:k]
-        novelty_score = sum(nearest_distances) / k
-        ind.fitness = novelty_score
-        if novelty_score >= config.task_params["threshold_for_novelty"]:
+        # Calculate the actual index in the combined matrix
+        matrix_idx = archive_size + idx
+
+        # Get distances for this individual
+        distances = distance_matrix[matrix_idx]
+
+        # Exclude self-distance
+        distances[matrix_idx] = float("inf")
+
+        # Compute average distance to k nearest neighbors
+        # k must not exceed the total number of points available (minus self)
+        k = min(task_params["n_points_to_consider"], len(all_individuals) - 1)
+
+        if k > 0:
+            nearest_distances = sorted(distances)[:k]
+            novelty_score = sum(nearest_distances) / k
+        else:
+            novelty_score = 0.0
+
+        if is_fitness_function:
+            ind.fitness = novelty_score
+        else:
+            ind.tags["novelty_score"] = novelty_score
+
+        if novelty_score >= task_params["threshold_for_novelty"]:
             ind.tags["novel"] = True
+
     return population

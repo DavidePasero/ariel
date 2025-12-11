@@ -249,11 +249,8 @@ class LSystemMutator(Mutation):
                         ]:
                             rotation = random.choice([
                                 0,
-                                45,
                                 90,
-                                135,
                                 180,
-                                225,
                                 270,
                             ])
                             op_to_add = operator + "(" + str(rotation) + ")"
@@ -273,11 +270,8 @@ class LSystemMutator(Mutation):
                         ]:
                             rotation = random.choice([
                                 0,
-                                45,
                                 90,
-                                135,
                                 180,
-                                225,
                                 270,
                             ])
                             op_to_add = operator + "(" + str(rotation) + ")"
@@ -293,11 +287,8 @@ class LSystemMutator(Mutation):
                         ]:
                             rotation = random.choice([
                                 0,
-                                45,
                                 90,
-                                135,
                                 180,
-                                225,
                                 270,
                             ])
                             op_to_add = operator + "(" + str(rotation) + ")"

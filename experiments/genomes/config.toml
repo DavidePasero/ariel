@@ -11,9 +11,11 @@ genotype = "lsystem"
 # One of "evolve_to_copy", "evolve_to_copy_sequence_normal", "evolve_to_copy_sequence_reverse", "evolve_for_novelty",
 task = "evolve_to_copy"
 
+include_diversity_measure = false
+
 [task.evolve_to_copy.params]
-target_robot_path = "experiments/genomes/target_robots/spider_robot_25.json"
-distance_metric = "ted"
+target_robot_path = "experiments/genomes/target_robots/snake_robot_15.json"
+distance_metric = "descriptor"
 
 
 [task.evolve_to_copy_sequence_normal.params]
@@ -38,7 +40,7 @@ distance_metric = "descriptor"
 quiet = false
 is_maximisation = true
 first_generation_id = 0
-num_of_generations = 100
+num_of_generations = 512
 target_population_size = 512
 
 # =========================

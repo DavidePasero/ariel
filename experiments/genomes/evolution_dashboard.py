@@ -63,6 +63,9 @@ class EvolutionDashboard:
         # Pre-compute fitness timeline
         self._compute_fitness_timeline()
 
+        # Pre-compute novelty timeline (if data exists)
+        self._compute_novelty_timeline()
+
         # Cache for computed descriptors per generation
         self._descriptor_cache = {}
 
@@ -135,6 +138,34 @@ class EvolutionDashboard:
                     "worst_fitness": min(ind.fitness for ind in population),
                 })
 
+    def _compute_novelty_timeline(self):
+        """Compute average and best novelty for each generation if available."""
+        self.novelty_timeline = []
+        self.has_novelty_data = False
+
+        # Check if any individual in the first populated generation has the tag
+        for pop in self.populations:
+            if pop and "novelty_score" in pop[0].tags:
+                self.has_novelty_data = True
+                break
+
+        if not self.has_novelty_data:
+            return
+
+        for gen_idx, population in enumerate(self.populations):
+            if population:
+                # Extract novelty scores, default to 0.0 if missing
+                scores = [
+                    ind.tags.get("novelty_score", 0.0) for ind in population
+                ]
+
+                if scores:
+                    self.novelty_timeline.append({
+                        "generation": gen_idx,
+                        "avg_novelty": np.mean(scores),
+                        "best_novelty": max(scores),
+                    })
+
     def _get_generation_data(self, generation: int):
         """Get or compute morphological data for a specific generation."""
         if generation in self._descriptor_cache:
@@ -162,6 +193,22 @@ class EvolutionDashboard:
     def _setup_layout(self):
         """Setup the dashboard layout."""
         max_generation = len(self.populations) - 1
+
+        viewer_instructions = [
+            "Click on robots to view them here:",
+            html.Br(),
+            "• Fitness Timeline → Best robot from generation",
+            html.Br(),
+            "• Single Feature plots → Robot closest to mean fitness",
+            html.Br(),
+            "• Fitness Landscapes/Pairwise Features → Specific robot",
+        ]
+
+        if self.has_novelty_data:
+            viewer_instructions.extend([
+                html.Br(),
+                "• Diversity Timeline → Most novel robot from generation",
+            ])
 
         self.app.layout = html.Div([
             html.H1(
@@ -253,15 +300,7 @@ class EvolutionDashboard:
                         id="fixed-robot-viewer",
                         children=[
                             html.P(
-                                [
-                                    "Click on robots to view them here:",
-                                    html.Br(),
-                                    "• Fitness Timeline → Best robot from generation",
-                                    html.Br(),
-                                    "• Single Feature plots → Robot closest to mean fitness",
-                                    html.Br(),
-                                    "• Fitness Landscapes/Pairwise Features → Specific robot",
-                                ],
+                                viewer_instructions,
                                 style={
                                     "textAlign": "center",
                                     "color": "#666",
@@ -279,6 +318,18 @@ class EvolutionDashboard:
                     "backgroundColor": "#f9f9f9",
                     "borderRadius": "10px",
                     "border": "2px solid #ddd",
+                },
+            ),
+            # Diversity Section (Conditional)
+            html.Div(
+                [
+                    html.H3("Diversity / Novelty Over Generations"),
+                    dcc.Graph(id="novelty-timeline"),
+                ],
+                style={
+                    "margin": "20px",
+                    "marginBottom": 40,
+                    "display": "block" if self.has_novelty_data else "none",
                 },
             ),
             # Tabbed plots section
@@ -379,6 +430,67 @@ class EvolutionDashboard:
                 showlegend=True,
             )
 
+            return fig
+
+        @self.app.callback(
+            Output("novelty-timeline", "figure"),
+            Input("generation-slider", "value"),
+        )
+        def update_novelty_timeline(selected_generation):
+            """Update novelty timeline if data is available."""
+            if not self.has_novelty_data or not self.novelty_timeline:
+                return go.Figure()
+
+            df = pd.DataFrame(self.novelty_timeline)
+            fig = go.Figure()
+
+            # Average Novelty
+            fig.add_trace(
+                go.Scatter(
+                    x=df["generation"],
+                    y=df["avg_novelty"],
+                    mode="lines+markers",
+                    name="Average Novelty",
+                    line=dict(color="orange", width=2),
+                )
+            )
+
+            # Best Novelty
+            fig.add_trace(
+                go.Scatter(
+                    x=df["generation"],
+                    y=df["best_novelty"],
+                    mode="lines+markers",
+                    name="Best Novelty",
+                    line=dict(color="purple", width=2),
+                )
+            )
+
+            # Highlight selected generation
+            if selected_generation < len(df):
+                selected_row = df.iloc[selected_generation]
+                fig.add_trace(
+                    go.Scatter(
+                        x=[selected_row["generation"]],
+                        y=[selected_row["avg_novelty"]],
+                        mode="markers",
+                        name=f"Generation {selected_generation}",
+                        marker=dict(
+                            color="red",
+                            size=12,
+                            symbol="circle-open",
+                            line=dict(width=3),
+                        ),
+                    )
+                )
+
+            fig.update_layout(
+                title="Novelty/Diversity Scores Over Generations<br><sub>Click on any point to view the most novel robot</sub>",
+                xaxis_title="Generation",
+                yaxis_title="Novelty Score",
+                height=400,
+                showlegend=True,
+            )
             return fig
 
         @self.app.callback(
@@ -542,6 +654,61 @@ class EvolutionDashboard:
             """Update the fixed robot viewer when fitness timeline is clicked."""
             if timeline_click and self.current_robot_image is not None:
                 return self._render_robot_display(self.current_robot_image)
+            return dash.no_update
+
+        # Callback to update fixed robot viewer for NOVELTY timeline clicks
+        @self.app.callback(
+            Output("fixed-robot-viewer", "children", allow_duplicate=True),
+            Input("novelty-timeline", "clickData"),
+            prevent_initial_call=True,
+        )
+        def update_fixed_robot_viewer_novelty(timeline_click):
+            """Update the fixed robot viewer when novelty timeline is clicked."""
+            if not timeline_click or "points" not in timeline_click:
+                return dash.no_update
+
+            # Find the most novel robot for the clicked generation
+            try:
+                point = timeline_click["points"][0]
+                generation = int(point["x"])
+
+                # We need to manually trigger the render logic because we want the most NOVEL robot
+                # not the best fitness one.
+
+                if generation < 0 or generation >= len(self.populations):
+                    return dash.no_update
+
+                population = self.populations[generation]
+                if not population:
+                    return dash.no_update
+
+                # Find most novel individual
+                best_ind = max(
+                    population,
+                    key=lambda ind: ind.tags.get(
+                        "novelty_score", -float("inf")
+                    ),
+                )
+                ind_idx = population.index(best_ind)
+
+                # Render
+                robot_graph = self.decoder(best_ind)
+                rendered_img = self._render_robot(robot_graph)
+
+                if rendered_img:
+                    self.current_robot_image = {
+                        "image": rendered_img,
+                        "generation": generation,
+                        "individual": ind_idx,
+                        "fitness": best_ind.fitness,
+                        "novelty": best_ind.tags.get("novelty_score", 0.0),
+                        "filename": f"novel_robot_gen{generation}.json",
+                    }
+                    return self._render_robot_display(self.current_robot_image)
+
+            except Exception as e:
+                print(f"Error viewing novelty robot: {e}")
+
             return dash.no_update
 
         # Separate callback for dynamically created single feature graph
@@ -1067,36 +1234,7 @@ class EvolutionDashboard:
                 style={"textAlign": "center", "marginTop": 20},
             ),
             # Robot metadata
-            html.Div(
-                [
-                    html.Div(
-                        [
-                            html.Strong("Generation: "),
-                            html.Span(f"{robot_info['generation']}"),
-                        ],
-                        style={"display": "inline-block", "marginRight": 30},
-                    ),
-                    html.Div(
-                        [
-                            html.Strong("Individual: "),
-                            html.Span(f"{robot_info['individual']}"),
-                        ],
-                        style={"display": "inline-block", "marginRight": 30},
-                    ),
-                    html.Div(
-                        [
-                            html.Strong("Fitness: "),
-                            html.Span(f"{robot_info['fitness']:.4f}"),
-                        ],
-                        style={"display": "inline-block"},
-                    ),
-                ],
-                style={
-                    "textAlign": "center",
-                    "marginBottom": 20,
-                    "fontSize": 14,
-                },
-            ),
+            self._render_robot_metadata(robot_info),
             # Rendered robot image
             html.Div(
                 [
@@ -1146,36 +1284,7 @@ class EvolutionDashboard:
         """
         return html.Div([
             # Robot metadata
-            html.Div(
-                [
-                    html.Div(
-                        [
-                            html.Strong("Generation: "),
-                            html.Span(f"{robot_info['generation']}"),
-                        ],
-                        style={"display": "inline-block", "marginRight": 30},
-                    ),
-                    html.Div(
-                        [
-                            html.Strong("Individual: "),
-                            html.Span(f"{robot_info['individual']}"),
-                        ],
-                        style={"display": "inline-block", "marginRight": 30},
-                    ),
-                    html.Div(
-                        [
-                            html.Strong("Fitness: "),
-                            html.Span(f"{robot_info['fitness']:.4f}"),
-                        ],
-                        style={"display": "inline-block"},
-                    ),
-                ],
-                style={
-                    "textAlign": "center",
-                    "marginBottom": 20,
-                    "fontSize": 14,
-                },
-            ),
+            self._render_robot_metadata(robot_info),
             # Rendered robot image
             html.Div(
                 [
@@ -1204,6 +1313,53 @@ class EvolutionDashboard:
                 )
             ]),
         ])
+
+    def _render_robot_metadata(self, robot_info):
+        """Helper to render the metadata line for a robot."""
+        elements = [
+            html.Div(
+                [
+                    html.Strong("Generation: "),
+                    html.Span(f"{robot_info['generation']}"),
+                ],
+                style={"display": "inline-block", "marginRight": 30},
+            ),
+            html.Div(
+                [
+                    html.Strong("Individual: "),
+                    html.Span(f"{robot_info['individual']}"),
+                ],
+                style={"display": "inline-block", "marginRight": 30},
+            ),
+            html.Div(
+                [
+                    html.Strong("Fitness: "),
+                    html.Span(f"{robot_info['fitness']:.4f}"),
+                ],
+                style={"display": "inline-block"},
+            ),
+        ]
+
+        # Add Novelty Score if present
+        if "novelty" in robot_info:
+            elements.append(
+                html.Div(
+                    [
+                        html.Strong(" Novelty: "),
+                        html.Span(f"{robot_info['novelty']:.4f}"),
+                    ],
+                    style={"display": "inline-block", "marginLeft": 30},
+                )
+            )
+
+        return html.Div(
+            elements,
+            style={
+                "textAlign": "center",
+                "marginBottom": 20,
+                "fontSize": 14,
+            },
+        )
 
     def _render_target_robot_display(self, robot_info):
         """Render target robot display HTML for the fixed robot viewer.

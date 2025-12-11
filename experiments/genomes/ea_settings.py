@@ -37,6 +37,8 @@ class EASettings(BaseSettings):
     crossover_params: dict = {}
 
     task: str = "evolve_to_copy"
+    include_diversity: bool = False
+    include_diversity_measure_params: dict = {}
     task_params: dict = {}
     morphology_analyzer: MorphologyAnalyzer | None = None
 
