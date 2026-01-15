@@ -202,7 +202,9 @@ class lsystem_core(lsystem_element):
         self.back = None
         self.left = None
         self.right = None
-        self.allowed_connection = ["LEFT", "RIGHT", "FRONT", "BACK"]
+        self.top = None
+        self.bottom = None
+        self.allowed_connection = ["LEFT", "RIGHT", "FRONT", "BACK", "TOP", "BOTTOM"]
         self.name = "C"
 
 

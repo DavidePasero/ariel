@@ -1,0 +1,11 @@
+python -m experiments.genomes.multiple_runs_dashboard --db_paths \
+_data_/tree_multiple_spider/run0.db \
+_data_/tree_multiple_spider/run1.db \
+_data_/tree_multiple_spider/run2.db \
+_data_/tree_multiple_spider/run3.db \
+_data_/tree_multiple_spider/run4.db \
+_data_/tree_multiple_spider/run5.db \
+_data_/tree_multiple_spider/run6.db \
+_data_/tree_multiple_spider/run7.db \
+_data_/tree_multiple_spider/run8.db \
+_data_/tree_multiple_spider/run9.db \

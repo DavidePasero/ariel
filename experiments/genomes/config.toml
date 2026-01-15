@@ -4,27 +4,27 @@
 
 [run]
 # Choose which genotype profile to use for this run.
-# One of: "integers", "tree", "lsystem", "cppn"
-genotype = "lsystem"
+# One of: "tree", "lsystem", "cppn"
+genotype = "tree"
 
 # Choose which (morphological) task we want to try
-# One of "evolve_to_copy", "evolve_to_copy_sequence_normal", "evolve_to_copy_sequence_reverse", "evolve_for_novelty",
+# One of "evolve_to_copy", "evolve_to_copy_sequence_normal", "evolve_to_copy_sequence_reverse", "evolve_for_novelty", "no_fitness"
 task = "evolve_to_copy"
 
-include_diversity_measure = false
+include_diversity_measure = true
 
 [task.evolve_to_copy.params]
-target_robot_path = "experiments/genomes/target_robots/snake_robot_15.json"
-distance_metric = "descriptor"
+target_robot_path = "experiments/genomes/target_robots/spider_big.json"
+distance_metric = "ted"
 
 
 [task.evolve_to_copy_sequence_normal.params]
-target_robot_paths = ["examples/target_robots/small_robot_8.json", "examples/target_robots/medium_robot_15.json", "examples/target_robots/large_robot_25.json"]
+target_robot_paths = ["experiments/genomes/target_robots/spider_small.json", "experiments/genomes/target_robots/spider_medium.json", "experiments/genomes/target_robots/spider_big.json"]
 distance_metric = "ted"
 
 
 [task.evolve_to_copy_sequence_reverse.params]
-target_robot_paths = ["examples/target_robots/small_robot_8.json", "examples/target_robots/medium_robot_15.json", "examples/target_robots/large_robot_25.json"]
+target_robot_paths = ["experiments/genomes/target_robots/spider_small.json", "experiments/genomes/target_robots/spider_medium.json", "experiments/genomes/target_robots/spider_big.json"]
 distance_metric = "ted"
 
 
@@ -40,8 +40,8 @@ distance_metric = "descriptor"
 quiet = false
 is_maximisation = true
 first_generation_id = 0
-num_of_generations = 512
-target_population_size = 512
+num_of_generations = 10
+target_population_size = 100
 
 # =========================
 # Data config
@@ -103,12 +103,12 @@ mutation = "mutate_cppn"
 crossover = "crossover"
 
 [genotypes.cppn.mutation.params]
-node_add_rate = 0.2
+node_add_rate = 0.05
 conn_add_rate = 0.2
-node_remove_rate = 0.2
+node_remove_rate = 0.05
 conn_remove_rate = 0.2
-weight_mutate_rate = 0.2
+weight_mutate_rate = 0.8
 
-weight_mutate_power = 1.0
+weight_mutate_power = 0.5
 
 [genotypes.cppn.crossover.params]

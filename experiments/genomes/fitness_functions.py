@@ -115,6 +115,13 @@ def preprocess_evolve_for_novelty(
     pass
 
 
+@register_preprocessing("no_fitness")
+def preprocess_no_fitness(
+    config: EASettings,
+) -> None:
+    pass
+
+
 # ------------------------ Fitness Functions ------------------------ #
 
 
@@ -252,7 +259,44 @@ def evolve_for_novelty(
         else:
             ind.tags["novelty_score"] = novelty_score
 
-        if novelty_score >= task_params["threshold_for_novelty"]:
-            ind.tags["novel"] = True
+    # 6. Archive the top-N novel individuals
+    # Instead of a fixed threshold, we select the top 'n_points_to_consider'
+    # most novel individuals from the current generation.
+    
+    n_to_archive = task_params["n_points_to_consider"]
+    
+    # Helper to retrieve score regardless of storage location
+    def get_novelty(ind: Individual) -> float:
+        if is_fitness_function:
+            return ind.fitness
+        return ind.tags.get("novelty_score", 0.0)
 
+    # Sort population descending by novelty score
+    sorted_population = sorted(population, key=get_novelty, reverse=True)
+
+    # Tag the top N (or fewer if population is small)
+    for i in range(min(len(sorted_population), n_to_archive)):
+        sorted_population[i].tags["novel"] = True
+
+    return population
+
+
+@register_fitness("no_fitness")
+def no_fitness(
+    population: Population, config: EASettings, ea: EA
+) -> Population:
+    """_
+    Assign 0 fitness to all the individuals to look for biases
+    in random generations of a certain genotype
+
+    Args:
+        population (Population): _description_
+        config (EASettings): _description_
+        ea (EA): _description_
+
+    Returns:
+        Population: _description_
+    """
+    for ind in population:
+        ind.fitness = 0.0
     return population

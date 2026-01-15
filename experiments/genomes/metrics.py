@@ -35,10 +35,11 @@ def calculate_similarity_descriptor(
     desc_ind = compute_6d_descriptor(individual)
     desc_target = compute_6d_descriptor(target)
     # Normalize by number of bricks and hinges to avoid bias towards larger robots
-    desc_ind[6] = desc_ind[6] / desc_target[6]
-    desc_target[6] = 1.0
-    desc_ind[7] = desc_ind[7] / desc_target[7]
-    desc_target[7] = 1.0
+    if len(desc_ind) == 8:
+        desc_ind[6] = desc_ind[6] / desc_target[6]
+        desc_target[6] = 1.0
+        desc_ind[7] = desc_ind[7] / desc_target[7]
+        desc_target[7] = 1.0
 
     return np.linalg.norm(desc_ind - desc_target)
 

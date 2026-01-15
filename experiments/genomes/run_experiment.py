@@ -58,6 +58,12 @@ def main():
         default=None,
         help="Number of parallel workers (default: number of CPUs)",
     )
+    parser.add_argument(
+        "--genotype",
+        type=str,
+        default=None,
+        help="Override genotype specified in config (e.g., 'tree', 'cppn', 'lsystem')",
+    )
 
     args = parser.parse_args()
 
@@ -66,6 +72,7 @@ def main():
         config_path=args.config,
         output_folder=args.output,
         base_seed=args.seed,
+        genotype_override=args.genotype,
     )
 
     # Run experiment based on mode

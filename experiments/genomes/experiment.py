@@ -78,6 +78,7 @@ class GenomeEAExperiment:
         config_path: Path,
         output_folder: Path | None = None,
         base_seed: int = 42,
+        genotype_override: str | None = None,
     ):
         """Initialize the experiment runner.
 
@@ -93,6 +94,7 @@ class GenomeEAExperiment:
         self.config_path = config_path
         self.output_folder = output_folder
         self.base_seed = base_seed
+        self.genotype_override = genotype_override
 
         # Validate config file exists
         if not self.config_path.exists():
@@ -122,7 +124,7 @@ class GenomeEAExperiment:
         cfg = tomllib.loads(self.config_path.read_text())
 
         # Resolve the active operators from the chosen genotype profile
-        gname = cfg["run"]["genotype"]
+        gname = self.genotype_override or cfg["run"]["genotype"]
         gblock = cfg["genotypes"][gname]
         mutation_name = cfg["run"].get(
             "mutation", gblock["defaults"]["mutation"]
