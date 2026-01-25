@@ -575,7 +575,7 @@ def main():
         description="Dashboard Manager - Unified interface for evolution dashboards"
     )
     parser.add_argument(
-        "dashboard_type",
+        "--dashboard_type",
         choices=[
             "evolution",
             "comparative",

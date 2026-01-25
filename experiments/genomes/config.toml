@@ -4,8 +4,8 @@
 
 [run]
 # Choose which genotype profile to use for this run.
-# One of: "tree", "lsystem", "cppn"
-genotype = "tree"
+# One of: "tree", "lsystem", "cppn", "nde"
+genotype = "nde"
 
 # Choose which (morphological) task we want to try
 # One of "evolve_to_copy", "evolve_to_copy_sequence_normal", "evolve_to_copy_sequence_reverse", "evolve_for_novelty", "no_fitness"
@@ -40,7 +40,7 @@ distance_metric = "descriptor"
 quiet = false
 is_maximisation = true
 first_generation_id = 0
-num_of_generations = 10
+num_of_generations = 200
 target_population_size = 100
 
 # =========================
@@ -112,3 +112,19 @@ weight_mutate_rate = 0.8
 weight_mutate_power = 0.5
 
 [genotypes.cppn.crossover.params]
+
+[genotypes.nde]
+allowed_mutations = ["mutate_nde", "no_mutation"]
+allowed_crossovers = ["one_point", "revde"]
+
+[genotypes.nde.defaults]
+mutation = "mutate_nde"
+crossover = "one_point"
+
+[genotypes.nde.mutation.params]
+mutation_rate = 0.5
+min_val = -5.0
+max_val = 5.0
+
+[genotypes.nde.crossover.params]
+scaling_factor = -0.5

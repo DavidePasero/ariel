@@ -1,7 +1,6 @@
 from __future__ import annotations
 import json
 import ariel.body_phenotypes.robogen_lite.config as config
-import contextlib
 from collections import deque
 import networkx as nx
 from collections.abc import Callable

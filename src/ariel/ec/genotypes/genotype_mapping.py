@@ -1,9 +1,11 @@
 from ariel.ec.genotypes.tree.tree_genome import TreeGenome
 from ariel.ec.genotypes.lsystem.l_system_genotype import LSystemDecoder
 from ariel.ec.genotypes.cppn.cppn_genome import CPPN_genotype
+from ariel.ec.genotypes.nde.nde import NDEGenome
 
 GENOTYPES_MAPPING = {
-    'tree': TreeGenome,
-    'lsystem': LSystemDecoder,
-    'cppn': CPPN_genotype
+    "tree": TreeGenome,
+    "lsystem": LSystemDecoder,
+    "cppn": CPPN_genotype,
+    "nde": NDEGenome,
 }

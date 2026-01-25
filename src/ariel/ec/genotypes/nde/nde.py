@@ -14,22 +14,31 @@ Todo
 
 """
 
-# Standard library
-from pathlib import Path
-
-# Third-party libraries
+from __future__ import annotations
+import networkx as nx
 import numpy as np
-import numpy.typing as npt
+import json
+
+from ariel.ec.genotypes.genotype import Genotype, MAX_MODULES
 import torch
+from pathlib import Path
 from rich.console import Console
 from rich.traceback import install
-from torch import nn
+import base64, io, gzip
+
 
 # Local libraries
 from ariel.body_phenotypes.robogen_lite.config import (
     NUM_OF_FACES,
     NUM_OF_ROTATIONS,
     NUM_OF_TYPES_OF_MODULES,
+)
+
+from ariel.ec.crossovers import NDECrossover
+from ariel.ec.mutations import NDEMutation
+
+from ariel.body_phenotypes.robogen_lite.decoders.hi_prob_decoding import (
+    HighProbabilityDecoder,
 )
 
 # Global constants
@@ -46,6 +55,7 @@ DATA.mkdir(exist_ok=True)
 
 # --- RANDOM GENERATOR SETUP ---
 SEED = 42
+NETWORK_SEED = 12345
 RNG = np.random.default_rng(SEED)
 
 # --- TERMINAL OUTPUT SETUP ---
@@ -53,7 +63,13 @@ install(show_locals=True)
 console = Console()
 
 
-class NeuralDevelopmentalEncoding(nn.Module):
+def set_run_seed(seed: int) -> None:
+    global RUN_SEED, RNG
+    RUN_SEED = int(seed)
+    RNG = np.random.default_rng(RUN_SEED)
+
+
+class NeuralDevelopmentalEncoding(torch.nn.Module):
     def __init__(self, number_of_modules: int) -> None:
         super().__init__()
 
@@ -64,27 +80,27 @@ class NeuralDevelopmentalEncoding(nn.Module):
         # ! ----------------------------------------------------------------- #
 
         # Hidden Layers
-        self.fc1 = nn.Linear(64, 64)
-        self.fc2 = nn.Linear(64, 32)
-        self.fc3 = nn.Linear(32, 64)
-        self.fc4 = nn.Linear(64, 128)
+        self.fc1 = torch.nn.Linear(64, 64)
+        self.fc2 = torch.nn.Linear(64, 32)
+        self.fc3 = torch.nn.Linear(32, 64)
+        self.fc4 = torch.nn.Linear(64, 128)
 
         # ------------------------------------------------------------------- #
         # OUTPUTS
         self.type_p_shape = (number_of_modules, NUM_OF_TYPES_OF_MODULES)
-        self.type_p_out = nn.Linear(
+        self.type_p_out = torch.nn.Linear(
             128,
             number_of_modules * NUM_OF_TYPES_OF_MODULES,
         )
 
         self.conn_p_shape = (number_of_modules, number_of_modules, NUM_OF_FACES)
-        self.conn_p_out = nn.Linear(
+        self.conn_p_out = torch.nn.Linear(
             128,
             number_of_modules * number_of_modules * NUM_OF_FACES,
         )
 
         self.rot_p_shape = (number_of_modules, NUM_OF_ROTATIONS)
-        self.rot_p_out = nn.Linear(
+        self.rot_p_out = torch.nn.Linear(
             128,
             number_of_modules * NUM_OF_ROTATIONS,
         )
@@ -102,8 +118,8 @@ class NeuralDevelopmentalEncoding(nn.Module):
         # ------------------------------------------------------------------- #
 
         # Activations
-        self.relu = nn.ReLU()
-        self.sigmoid = nn.Sigmoid()
+        self.relu = torch.nn.ReLU()
+        self.sigmoid = torch.nn.Sigmoid()
 
         # Disable gradients for all parameters
         for param in self.parameters():
@@ -136,6 +152,93 @@ class NeuralDevelopmentalEncoding(nn.Module):
                 x = x.view(self.output_shapes[idx])
                 outputs.append(x.detach().numpy())
         return outputs
+
+    @staticmethod
+    def make_network_from_seed(
+        seed: int, num_modules: int
+    ) -> NeuralDevelopmentalEncoding:
+        torch.manual_seed(seed)
+        net = NeuralDevelopmentalEncoding(num_modules)
+        net.eval()
+        for p in net.parameters():
+            p.requires_grad = False
+        return net
+
+
+NETWORK_TEMPLATE = NeuralDevelopmentalEncoding.make_network_from_seed(
+    NETWORK_SEED, MAX_MODULES
+)
+
+
+class NDEGenome(Genotype):
+    def __init__(self, individual: np.array):
+        self.individual = individual
+        self.num_modules = MAX_MODULES
+
+    @staticmethod
+    def get_crossover_object() -> "Crossover":
+        """Return the crossover operator for this genotype type."""
+        return NDECrossover()
+
+    @staticmethod
+    def get_mutator_object() -> "Mutation":
+        """Return the mutator operator for this genotype type."""
+        return NDEMutation()
+
+    @staticmethod
+    def create_individual(**kwargs: dict) -> "Genotype":
+        """Generate a new individual of this genotype type."""
+        genotype_size = 64
+        type_p_genes = RNG.random(genotype_size)
+        conn_p_genes = RNG.random(genotype_size)
+        rot_p_genes = RNG.random(genotype_size)
+
+        genotype = [
+            type_p_genes,
+            conn_p_genes,
+            rot_p_genes,
+        ]
+        return NDEGenome(np.array(genotype))
+
+    def to_digraph(self: "Genotype", **kwargs: dict) -> nx.DiGraph:
+        type_p, conn_p, rot_p = NETWORK_TEMPLATE.forward(self.individual)
+
+        hpd = HighProbabilityDecoder(self.num_modules)
+        return hpd.probability_matrices_to_graph(type_p, conn_p, rot_p)
+
+    def to_json(self, **kwargs) -> str:
+        ind_np = np.asarray(self.individual)
+        payload = {
+            "schema": "NDEGenome.v3",
+            "num_modules": int(self.num_modules),
+            "network_seed": int(NETWORK_SEED),
+            "individual": {
+                "dtype": str(ind_np.dtype),
+                "shape": list(ind_np.shape),
+                "data": ind_np.tolist(),
+            },
+        }
+        return json.dumps(payload)
+
+    @staticmethod
+    def from_json(json_data: str, load_global_network: bool = False, **kwargs):
+        obj = json.loads(json_data)
+
+        ind = obj["individual"]
+        ind_np = np.array(ind["data"], dtype=np.dtype(ind["dtype"])).reshape(
+            ind["shape"]
+        )
+
+        if load_global_network:
+            seed = int(obj["network_seed"])
+            global NETWORK_TEMPLATE
+            NETWORK_TEMPLATE = (
+                NeuralDevelopmentalEncoding.make_network_from_seed(
+                    SEED, int(obj["num_modules"])
+                )
+            )
+
+        return NDEGenome(ind_np)
 
 
 if __name__ == "__main__":

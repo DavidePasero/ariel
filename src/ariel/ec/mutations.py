@@ -17,9 +17,9 @@ import copy
 from ariel.ec.genotypes.cppn.node import Node
 from ariel.ec.genotypes.cppn.connection import Connection
 
-
 if TYPE_CHECKING:
     from ariel.ec.genotypes.genotype import Genotype
+    from ariel.ec.genotypes.nde.nde import NDEGenome
 import ariel.body_phenotypes.robogen_lite.config as pheno_config
 
 from ariel.ec.genotypes.genotype import MAX_MODULES
@@ -590,6 +590,33 @@ class CPPNMutator(Mutation):
             del individual.connections[innov_id]
 
         return individual
+
+
+class NDEMutation(Mutation):
+    @staticmethod
+    def mutate_nde(
+        individual: NDEGenome,
+        mutation_rate: float = 0.5,
+        min_val: float = -5.0,
+        max_val: float = 5.0,
+    ) -> NDEGenome:
+        from ariel.ec.genotypes.nde.nde import NDEGenome
+
+        genes = list(individual.individual).copy()
+        if random.random() < mutation_rate:
+            mutated = [i + random.uniform(min_val, max_val) for i in genes]
+        else:
+            mutated = genes.copy()
+
+        mutated_individual = NDEGenome(individual=mutated)
+        return mutated_individual
+
+    @staticmethod
+    def no_mutation(individual: NDEGenome) -> NDEGenome:
+        from ariel.ec.genotypes.nde.nde import NDEGenome
+
+        genes = list(individual.individual).copy()
+        return NDEGenome(individual=genes)
 
 
 def test() -> None:

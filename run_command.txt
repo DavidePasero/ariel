@@ -1,11 +1,19 @@
-python -m experiments.genomes.multiple_runs_dashboard --db_paths \
-_data_/tree_multiple_spider/run0.db \
-_data_/tree_multiple_spider/run1.db \
-_data_/tree_multiple_spider/run2.db \
-_data_/tree_multiple_spider/run3.db \
-_data_/tree_multiple_spider/run4.db \
-_data_/tree_multiple_spider/run5.db \
-_data_/tree_multiple_spider/run6.db \
-_data_/tree_multiple_spider/run7.db \
-_data_/tree_multiple_spider/run8.db \
-_data_/tree_multiple_spider/run9.db \
+python -m experiments.genomes.multiple_runs_dashboard \
+--db_paths \
+_data_/cppn_no_fitness/run0.db \
+_data_/cppn_no_fitness/run1.db \
+_data_/cppn_no_fitness/run2.db \
+_data_/cppn_no_fitness/run3.db \
+_data_/cppn_no_fitness/run4.db \
+_data_/cppn_no_fitness/run5.db \
+_data_/cppn_no_fitness/run6.db \
+_data_/cppn_no_fitness/run7.db \
+_data_/cppn_no_fitness/run8.db \
+_data_/cppn_no_fitness/run9.db \
+
+python -m experiments.genomes.offline_comparative_plotter --experiment-dirs \
+_data_/tree_novelty     \
+_data_/lsystem_novelty  \
+_data_/cppn_novelty     \
+_data_/nde_novelty      \
+--title "Fitness Comparison Between Four Genotypes on Evolve to Copy Sequence Reverse" --names Tree L-System CPPN NDE

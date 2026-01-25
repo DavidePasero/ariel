@@ -1,27 +1,15 @@
 #!/usr/bin/env python3
 """
-Matplotlib Comparative Plotter for Publication-Quality Figures
+Unified Comparative Plotter (Fitness or Novelty)
 
 This module provides a class for generating publication-quality matplotlib
-plots comparing evolutionary computation results across different genotypes
-and multiple independent runs. It loads data from SQLite databases and
-computes aggregated statistics (mean, standard error) for plotting.
+plots comparing evolutionary computation results. It can switch between
+standard Fitness plots and Novelty Search plots via command line arguments.
+It also reports the overall best metrics found per experiment group.
 
 Usage:
-    plotter = ComparativePlotter()
-    plotter.add_experiment_group(
-        name="CPPN",
-        db_paths=["path/to/run1.db", "path/to/run2.db", ...],
-        color="blue"
-    )
-    plotter.add_experiment_group(
-        name="L-System",
-        db_paths=["path/to/lsys_run1.db", ...],
-        color="red"
-    )
-    plotter.plot_average_best_fitness(
-        save_path="fitness_comparison.png"
-    )
+    python plotter.py --type fitness --experiment-dirs ...
+    python plotter.py --type novelty --experiment-dirs ...
 """
 
 import numpy as np
@@ -31,6 +19,7 @@ from typing import List, Dict, Tuple, Optional, Any
 import json
 from sqlmodel import Session, create_engine, select
 from rich.console import Console
+from rich.table import Table
 
 from ariel.ec.a001 import Individual
 from ariel.ec.genotypes.genotype_mapping import GENOTYPES_MAPPING
@@ -42,23 +31,37 @@ type Population = List[Individual]
 class ComparativePlotter:
     """
     Publication-quality matplotlib plotter for comparing evolutionary runs.
-
-    This class loads multiple experiment runs from database files, computes
-    aggregated statistics across runs, and generates matplotlib figures
-    suitable for academic papers.
+    Supports switching between Fitness and Novelty metrics.
     """
 
-    def __init__(self, figsize: Tuple[int, int] = (10, 6), dpi: int = 300):
+    def __init__(
+        self,
+        figsize: Tuple[int, int] = (10, 6),
+        dpi: int = 300,
+        metric_type: str = "fitness",
+    ):
         """
         Initialize the plotter.
 
         Args:
             figsize: Figure size in inches (width, height)
             dpi: DPI for saved figures
+            metric_type: 'fitness' or 'novelty'
         """
         self.figsize = figsize
         self.dpi = dpi
+        self.metric_type = metric_type
         self.experiment_groups: Dict[str, Dict[str, Any]] = {}
+
+        # Set labels based on metric type
+        if self.metric_type == "novelty":
+            self.label_best = "Max Novelty Score"
+            self.label_avg = "Average Novelty Score"
+            self.label_y = "Novelty Score"
+        else:
+            self.label_best = "Best Fitness"
+            self.label_avg = "Average Fitness"
+            self.label_y = "Fitness"
 
         # Set publication-quality matplotlib parameters
         plt.rcParams.update({
@@ -89,26 +92,11 @@ class ComparativePlotter:
         linestyle: str = "-",
         marker: Optional[str] = None,
     ) -> None:
-        """
-        Add an experiment group (e.g., CPPN, L-System, Tree).
-
-        You can either provide:
-        - A list of database file paths directly (db_paths)
-        - A directory containing multiple .db files (db_directory)
-
-        Args:
-            name: Display name for this experiment group
-            db_paths: List of paths to database files (one per run)
-            db_directory: Directory containing multiple .db files
-            color: Color for plotting (matplotlib color string)
-            linestyle: Line style (default: '-')
-            marker: Marker style (default: None)
-        """
+        """Add an experiment group (e.g., CPPN, L-System)."""
         if db_paths is None and db_directory is None:
             raise ValueError("Must provide either db_paths or db_directory")
 
         if db_paths is None:
-            # Load all .db files from directory
             db_dir = Path(db_directory)
             if not db_dir.exists():
                 raise FileNotFoundError(f"Directory not found: {db_directory}")
@@ -120,9 +108,10 @@ class ComparativePlotter:
         if not db_paths:
             raise ValueError(f"No database files found for {name}")
 
-        console.log(f"Loading {name}: {len(db_paths)} runs")
+        console.log(
+            f"Loading {name} ({self.metric_type} mode): {len(db_paths)} runs"
+        )
 
-        # Load all runs for this experiment
         runs_data = []
         for db_path in db_paths:
             try:
@@ -130,11 +119,10 @@ class ComparativePlotter:
                     Path(db_path)
                 )
                 runs_data.append((populations, config))
-                console.log(
-                    f"  Loaded {db_path}: {len(populations)} generations"
-                )
             except Exception as e:
-                console.log(f"  Warning: Failed to load {db_path}: {e}")
+                console.log(
+                    f"  [red]Warning[/red]: Failed to load {db_path}: {e}"
+                )
                 continue
 
         if not runs_data:
@@ -152,23 +140,10 @@ class ComparativePlotter:
             "num_runs": len(runs_data),
         }
 
-        console.log(
-            f"Added {name}: {len(runs_data)} runs, "
-            f"{stats['max_generation']} generations"
-        )
-
     def _load_populations_from_db(
         self, db_path: Path
     ) -> Tuple[List[Population], Any]:
-        """
-        Load populations from a single database file.
-
-        Args:
-            db_path: Path to the database file
-
-        Returns:
-            Tuple of (populations list, config object)
-        """
+        """Load populations from a single database file."""
         if not db_path.exists():
             raise FileNotFoundError(f"Database not found: {db_path}")
 
@@ -176,14 +151,12 @@ class ComparativePlotter:
         populations = []
 
         with Session(engine) as session:
-            # Get all unique generations
             result = session.exec(select(Individual.time_of_birth)).all()
             if not result:
                 raise ValueError(f"No individuals found in database: {db_path}")
 
             generations = sorted(set(result))
 
-            # Load each generation
             for gen in generations:
                 individuals = session.exec(
                     select(Individual).where(Individual.time_of_birth == gen)
@@ -194,21 +167,16 @@ class ComparativePlotter:
                 ]
                 populations.append(population)
 
-        # Load configuration
-        config = self._load_config(db_path)
+        # Try loading config, return None if missing (not strictly needed for plotting)
+        try:
+            config = self._load_config(db_path)
+        except Exception:
+            config = None
 
         return populations, config
 
     def _load_config(self, db_path: Path) -> Any:
-        """
-        Load configuration from JSON file.
-
-        Args:
-            db_path: Path to the database file
-
-        Returns:
-            Configuration object
-        """
+        """Load configuration from JSON file."""
         config_filename = db_path.stem + "_config.json"
         json_config_path = db_path.parent / config_filename
 
@@ -226,13 +194,7 @@ class ComparativePlotter:
 
         class DashboardConfig:
             def __init__(self):
-                self.is_maximisation = resolved["is_maximisation"]
-                self.first_generation_id = resolved["first_generation_id"]
-                self.num_of_generations = resolved["num_of_generations"]
-                self.target_population_size = resolved["target_population_size"]
                 self.genotype = genotype
-                self.task = resolved["task"]
-                self.task_params = resolved.get("task_params", {})
                 self.genotype_name = genotype_name
 
         return DashboardConfig()
@@ -241,271 +203,264 @@ class ComparativePlotter:
         self, runs_data: List[Tuple[List[Population], Any]]
     ) -> Dict[str, Any]:
         """
-        Compute aggregated statistics across all runs.
-
-        Args:
-            runs_data: List of (populations, config) tuples for each run
-
-        Returns:
-            Dictionary containing aggregated statistics
+        Compute aggregated statistics based on the selected metric_type.
         """
-        # Find maximum number of generations across all runs
         max_generation = max(len(populations) for populations, _ in runs_data)
         num_runs = len(runs_data)
 
-        # Initialize arrays to store statistics
-        mean_best_fitness = np.zeros(max_generation)
-        std_best_fitness = np.zeros(max_generation)
-        stderr_best_fitness = np.zeros(max_generation)
-        mean_avg_fitness = np.zeros(max_generation)
-        std_avg_fitness = np.zeros(max_generation)
-        stderr_avg_fitness = np.zeros(max_generation)
+        # Initialize arrays
+        mean_best = np.zeros(max_generation)
+        std_best = np.zeros(max_generation)
+        stderr_best = np.zeros(max_generation)
+        mean_avg = np.zeros(max_generation)
+        std_avg = np.zeros(max_generation)
+        stderr_avg = np.zeros(max_generation)
 
-        # For each generation, collect best fitness from all runs
+        # Also store per-run bests for final reporting
+        run_bests = []
+
+        for populations, _ in runs_data:
+            # Find the absolute best value reached in this specific run
+            run_max_val = -float("inf")
+
+            for population in populations:
+                if not population:
+                    continue
+
+                if self.metric_type == "novelty":
+                    vals = []
+                    for ind in population:
+                        val = ind.tags.get("novelty_score")
+                        if val is None:
+                            val = ind.tags.get("novelty", 0.0)
+                        vals.append(float(val))
+                else:
+                    vals = [ind.fitness for ind in population]
+
+                if vals:
+                    current_max = max(vals)
+                    if current_max > run_max_val:
+                        run_max_val = current_max
+
+            run_bests.append(run_max_val)
+
         for gen_idx in range(max_generation):
-            best_fitnesses = []
-            avg_fitnesses = []
+            best_values = []
+            avg_values = []
 
             for populations, _ in runs_data:
                 if gen_idx < len(populations):
                     population = populations[gen_idx]
                     if population:
-                        fitnesses = [ind.fitness for ind in population]
-                        best_fitnesses.append(max(fitnesses))
-                        avg_fitnesses.append(np.mean(fitnesses))
+                        # --- DATA EXTRACTION SWITCH ---
+                        if self.metric_type == "novelty":
+                            # Extract novelty_score from tags
+                            values = []
+                            for ind in population:
+                                # Safe get, default to 0.0 if missing to avoid crashes
+                                val = ind.tags.get("novelty_score")
+                                if val is None:
+                                    # Fallback if using 'novelty' key instead of 'novelty_score'
+                                    val = ind.tags.get("novelty", 0.0)
+                                values.append(float(val))
+                        else:
+                            # Standard fitness
+                            values = [ind.fitness for ind in population]
+                        # ------------------------------
 
-            if best_fitnesses:
-                mean_best_fitness[gen_idx] = np.mean(best_fitnesses)
-                std_best_fitness[gen_idx] = np.std(best_fitnesses, ddof=1)
-                stderr_best_fitness[gen_idx] = std_best_fitness[
-                    gen_idx
-                ] / np.sqrt(len(best_fitnesses))
+                        if values:
+                            best_values.append(max(values))
+                            avg_values.append(np.mean(values))
 
-            if avg_fitnesses:
-                mean_avg_fitness[gen_idx] = np.mean(avg_fitnesses)
-                std_avg_fitness[gen_idx] = np.std(avg_fitnesses, ddof=1)
-                stderr_avg_fitness[gen_idx] = std_avg_fitness[
-                    gen_idx
-                ] / np.sqrt(len(avg_fitnesses))
+            # Helper to calculate stats safely
+            def calc_stat(data_list, out_mean, out_std, out_stderr, idx):
+                if data_list:
+                    out_mean[idx] = np.mean(data_list)
+                    out_std[idx] = np.std(data_list, ddof=1)
+                    out_stderr[idx] = out_std[idx] / np.sqrt(len(data_list))
+
+            calc_stat(best_values, mean_best, std_best, stderr_best, gen_idx)
+            calc_stat(avg_values, mean_avg, std_avg, stderr_avg, gen_idx)
 
         return {
             "max_generation": max_generation,
             "num_runs": num_runs,
             "generations": np.arange(max_generation),
-            "mean_best_fitness": mean_best_fitness,
-            "std_best_fitness": std_best_fitness,
-            "stderr_best_fitness": stderr_best_fitness,
-            "mean_avg_fitness": mean_avg_fitness,
-            "std_avg_fitness": std_avg_fitness,
-            "stderr_avg_fitness": stderr_avg_fitness,
+            "mean_best": mean_best,
+            "std_best": std_best,
+            "stderr_best": stderr_best,
+            "mean_avg": mean_avg,
+            "std_avg": std_avg,
+            "stderr_avg": stderr_avg,
+            "run_bests": run_bests,  # Store per-run bests
         }
 
-    def plot_average_best_fitness(
+    def print_best_results(self):
+        """Prints a rich table with the best results per group."""
+        table = Table(
+            title=f"Best Results Summary ({self.metric_type.capitalize()})"
+        )
+        table.add_column("Experiment Group", style="cyan", no_wrap=True)
+        table.add_column("Runs", justify="center")
+        table.add_column("Best Overall", justify="right", style="green")
+        table.add_column("Mean Best (± Std)", justify="right")
+        table.add_column("Worst Best", justify="right", style="red")
+
+        for name, group in self.experiment_groups.items():
+            run_bests = group["statistics"]["run_bests"]
+            # Filter out -inf if any runs failed completely
+            valid_bests = [x for x in run_bests if x != -float("inf")]
+
+            if not valid_bests:
+                table.add_row(name, str(len(run_bests)), "N/A", "N/A", "N/A")
+                continue
+
+            best_overall = np.max(valid_bests)
+            mean_best = np.mean(valid_bests)
+            std_best = np.std(valid_bests)
+            worst_best = np.min(valid_bests)
+
+            table.add_row(
+                name,
+                str(len(run_bests)),
+                f"{best_overall:.4f}",
+                f"{mean_best:.4f} ± {std_best:.4f}",
+                f"{worst_best:.4f}",
+            )
+
+        console.print(table)
+        console.print("")  # spacing
+
+    def plot_average_best(
         self,
         save_path: Optional[str] = None,
         title: Optional[str] = None,
-        xlabel: str = "Generation",
-        ylabel: str = "Best Fitness",
         use_stderr: bool = True,
         show_legend: bool = True,
-        legend_loc: str = "best",
         grid: bool = True,
         show_plot: bool = False,
     ) -> plt.Figure:
         """
-        Plot average best fitness across runs for all experiment groups.
-
-        Args:
-            save_path: Path to save the figure (if None, won't save)
-            title: Plot title (if None, uses default)
-            xlabel: X-axis label
-            ylabel: Y-axis label
-            use_stderr: If True, use standard error; if False, use std deviation
-            show_legend: Whether to show the legend
-            legend_loc: Legend location
-            grid: Whether to show grid
-            show_plot: Whether to display the plot interactively
-
-        Returns:
-            The matplotlib Figure object
+        Plot the 'Best' metric (Max Fitness or Max Novelty) across runs.
         """
         if not self.experiment_groups:
-            raise ValueError(
-                "No experiment groups added. Use add_experiment_group() first."
-            )
+            raise ValueError("No experiment groups added.")
 
         fig, ax = plt.subplots(figsize=self.figsize)
 
-        # Plot each experiment group
         for name, group in self.experiment_groups.items():
             stats = group["statistics"]
             generations = stats["generations"]
-            mean_fitness = stats["mean_best_fitness"]
+            mean_val = stats["mean_best"]
+            error = stats["stderr_best"] if use_stderr else stats["std_best"]
 
-            if use_stderr:
-                error = stats["stderr_best_fitness"]
-                error_label = "SE"
-            else:
-                error = stats["std_best_fitness"]
-                error_label = "SD"
-
-            color = group["color"]
-            linestyle = group["linestyle"]
-            marker = group["marker"]
-
-            # Plot mean line
             ax.plot(
                 generations,
-                mean_fitness,
-                label=f"{name} (n={group['num_runs']})",
-                color=color,
-                linestyle=linestyle,
-                marker=marker,
+                mean_val,
+                label=f"{name}",
+                color=group["color"],
+                linestyle=group["linestyle"],
+                marker=group["marker"],
                 markevery=max(1, len(generations) // 10),
-                zorder=10,
             )
-
-            # Plot shaded error region
             ax.fill_between(
                 generations,
-                mean_fitness - error,
-                mean_fitness + error,
+                mean_val - error,
+                mean_val + error,
                 alpha=0.2,
-                color=color,
-                zorder=5,
+                color=group["color"],
+                linewidth=0,
             )
 
-        # Customize plot
         if title is None:
-            title = "Average Best Fitness Across Runs"
+            title = f"{self.label_best} Across Runs"
+
         ax.set_title(title)
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel)
+        ax.set_xlabel("Generation")
+        ax.set_ylabel(
+            self.label_best
+        )  # E.g., "Max Novelty Score" or "Best Fitness"
 
         if grid:
             ax.grid(True, alpha=0.3, linestyle="--", linewidth=0.5)
-
         if show_legend:
-            ax.legend(loc=legend_loc, framealpha=0.9)
+            ax.legend(loc="best", framealpha=0.9)
 
-        # Tight layout
         fig.tight_layout()
 
-        # Save if path provided
         if save_path:
             fig.savefig(save_path, dpi=self.dpi, bbox_inches="tight")
             console.log(f"Saved figure to: {save_path}")
 
-        # Show if requested
         if show_plot:
             plt.show()
         else:
             plt.close(fig)
-
         return fig
 
-    def plot_average_fitness(
+    def plot_average_mean(
         self,
         save_path: Optional[str] = None,
         title: Optional[str] = None,
-        xlabel: str = "Generation",
-        ylabel: str = "Average Fitness",
         use_stderr: bool = True,
         show_legend: bool = True,
-        legend_loc: str = "best",
         grid: bool = True,
         show_plot: bool = False,
     ) -> plt.Figure:
         """
-        Plot average population fitness across runs for all experiment groups.
-
-        Similar to plot_average_best_fitness but uses mean fitness instead of best.
-
-        Args:
-            save_path: Path to save the figure (if None, won't save)
-            title: Plot title (if None, uses default)
-            xlabel: X-axis label
-            ylabel: Y-axis label
-            use_stderr: If True, use standard error; if False, use std deviation
-            show_legend: Whether to show the legend
-            legend_loc: Legend location
-            grid: Whether to show grid
-            show_plot: Whether to display the plot interactively
-
-        Returns:
-            The matplotlib Figure object
+        Plot the 'Average' metric (Mean Fitness or Mean Novelty) across runs.
         """
         if not self.experiment_groups:
-            raise ValueError(
-                "No experiment groups added. Use add_experiment_group() first."
-            )
+            raise ValueError("No experiment groups added.")
 
         fig, ax = plt.subplots(figsize=self.figsize)
 
-        # Plot each experiment group
         for name, group in self.experiment_groups.items():
             stats = group["statistics"]
             generations = stats["generations"]
-            mean_fitness = stats["mean_avg_fitness"]
+            mean_val = stats["mean_avg"]
+            error = stats["stderr_avg"] if use_stderr else stats["std_avg"]
 
-            if use_stderr:
-                error = stats["stderr_avg_fitness"]
-            else:
-                error = stats["std_avg_fitness"]
-
-            color = group["color"]
-            linestyle = group["linestyle"]
-            marker = group["marker"]
-
-            # Plot mean line
             ax.plot(
                 generations,
-                mean_fitness,
-                label=f"{name} (n={group['num_runs']})",
-                color=color,
-                linestyle=linestyle,
-                marker=marker,
+                mean_val,
+                label=f"{name}",
+                color=group["color"],
+                linestyle=group["linestyle"],
+                marker=group["marker"],
                 markevery=max(1, len(generations) // 10),
-                zorder=10,
             )
-
-            # Plot shaded error region
             ax.fill_between(
                 generations,
-                mean_fitness - error,
-                mean_fitness + error,
+                mean_val - error,
+                mean_val + error,
                 alpha=0.2,
-                color=color,
-                zorder=5,
+                color=group["color"],
+                linewidth=0,
             )
 
-        # Customize plot
         if title is None:
-            title = "Average Population Fitness Across Runs"
+            title = f"{self.label_avg} Across Runs"
+
         ax.set_title(title)
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel)
+        ax.set_xlabel("Generation")
+        ax.set_ylabel(self.label_avg)
 
         if grid:
             ax.grid(True, alpha=0.3, linestyle="--", linewidth=0.5)
-
         if show_legend:
-            ax.legend(loc=legend_loc, framealpha=0.9)
+            ax.legend(loc="best", framealpha=0.9)
 
-        # Tight layout
         fig.tight_layout()
 
-        # Save if path provided
         if save_path:
             fig.savefig(save_path, dpi=self.dpi, bbox_inches="tight")
             console.log(f"Saved figure to: {save_path}")
 
-        # Show if requested
         if show_plot:
             plt.show()
         else:
             plt.close(fig)
-
         return fig
 
     def plot_combined(
@@ -513,230 +468,136 @@ class ComparativePlotter:
         save_path: Optional[str] = None,
         title: Optional[str] = None,
         use_stderr: bool = True,
-        show_legend: bool = True,
-        legend_loc: str = "best",
-        grid: bool = True,
-        show_plot: bool = False,
     ) -> plt.Figure:
-        """
-        Create a combined plot with both best and average fitness.
-
-        Args:
-            save_path: Path to save the figure (if None, won't save)
-            title: Plot title (if None, uses default)
-            use_stderr: If True, use standard error; if False, use std deviation
-            show_legend: Whether to show the legend
-            legend_loc: Legend location
-            grid: Whether to show grid
-            show_plot: Whether to display the plot interactively
-
-        Returns:
-            The matplotlib Figure object
-        """
-        if not self.experiment_groups:
-            raise ValueError(
-                "No experiment groups added. Use add_experiment_group() first."
-            )
-
+        """Create a combined plot with both Best and Average metrics."""
         fig, (ax1, ax2) = plt.subplots(
             2, 1, figsize=(self.figsize[0], self.figsize[1] * 1.5)
         )
 
-        # Plot best fitness (top panel)
+        # Plot Best (Top Panel)
         for name, group in self.experiment_groups.items():
             stats = group["statistics"]
-            generations = stats["generations"]
-            mean_fitness = stats["mean_best_fitness"]
-            error = (
-                stats["stderr_best_fitness"]
-                if use_stderr
-                else stats["std_best_fitness"]
-            )
+            gens = stats["generations"]
+            mean_val = stats["mean_best"]
+            error = stats["stderr_best"] if use_stderr else stats["std_best"]
 
             ax1.plot(
-                generations,
-                mean_fitness,
-                label=f"{name}",  # (n={group['num_runs']})",
+                gens,
+                mean_val,
+                label=name,
                 color=group["color"],
                 linestyle=group["linestyle"],
-                marker=group["marker"],
-                markevery=max(1, len(generations) // 10),
-                zorder=10,
             )
             ax1.fill_between(
-                generations,
-                mean_fitness - error,
-                mean_fitness + error,
+                gens,
+                mean_val - error,
+                mean_val + error,
                 alpha=0.2,
                 color=group["color"],
-                zorder=5,
             )
 
-        ax1.set_title("Best Fitness")
-        ax1.set_xlabel("Generation")
-        ax1.set_ylabel("Best Fitness")
-        if grid:
-            ax1.grid(True, alpha=0.3, linestyle="--", linewidth=0.5)
-        if show_legend:
-            ax1.legend(loc=legend_loc, framealpha=0.9)
+        ax1.set_title(self.label_best)
+        ax1.set_ylabel(self.label_y)
+        ax1.grid(True, alpha=0.3, linestyle="--")
+        ax1.legend(loc="best")
 
-        # Plot average fitness (bottom panel)
+        # Plot Average (Bottom Panel)
         for name, group in self.experiment_groups.items():
             stats = group["statistics"]
-            generations = stats["generations"]
-            mean_fitness = stats["mean_avg_fitness"]
-            error = (
-                stats["stderr_avg_fitness"]
-                if use_stderr
-                else stats["std_avg_fitness"]
-            )
+            gens = stats["generations"]
+            mean_val = stats["mean_avg"]
+            error = stats["stderr_avg"] if use_stderr else stats["std_avg"]
 
             ax2.plot(
-                generations,
-                mean_fitness,
-                label=f"{name} (n={group['num_runs']})",
+                gens,
+                mean_val,
+                label=name,
                 color=group["color"],
                 linestyle=group["linestyle"],
-                marker=group["marker"],
-                markevery=max(1, len(generations) // 10),
-                zorder=10,
             )
             ax2.fill_between(
-                generations,
-                mean_fitness - error,
-                mean_fitness + error,
+                gens,
+                mean_val - error,
+                mean_val + error,
                 alpha=0.2,
                 color=group["color"],
-                zorder=5,
             )
 
-        ax2.set_title("Average Population Fitness")
+        ax2.set_title(self.label_avg)
+        ax2.set_ylabel(self.label_y)
         ax2.set_xlabel("Generation")
-        ax2.set_ylabel("Average Fitness")
-        if grid:
-            ax2.grid(True, alpha=0.3, linestyle="--", linewidth=0.5)
+        ax2.grid(True, alpha=0.3, linestyle="--")
 
         if title:
             fig.suptitle(title, fontsize=14, y=0.995)
 
         fig.tight_layout()
 
-        # Save if path provided
         if save_path:
             fig.savefig(save_path, dpi=self.dpi, bbox_inches="tight")
-            console.log(f"Saved figure to: {save_path}")
-
-        # Show if requested
-        if show_plot:
-            plt.show()
-        else:
-            plt.close(fig)
+            console.log(f"Saved combined figure to: {save_path}")
 
         return fig
 
-    def get_statistics_summary(self) -> str:
-        """
-        Get a text summary of loaded statistics.
-
-        Returns:
-            Formatted string with statistics summary
-        """
-        if not self.experiment_groups:
-            return "No experiment groups loaded."
-
-        summary = ["=" * 60]
-        summary.append("EXPERIMENT GROUPS SUMMARY")
-        summary.append("=" * 60)
-
-        for name, group in self.experiment_groups.items():
-            stats = group["statistics"]
-            summary.append(f"\n{name}:")
-            summary.append(f"  Number of runs: {stats['num_runs']}")
-            summary.append(f"  Generations: {stats['max_generation']}")
-            summary.append(f"  Final best fitness (mean ± SE):")
-            summary.append(
-                f"    {stats['mean_best_fitness'][-1]:.4f} ± "
-                f"{stats['stderr_best_fitness'][-1]:.4f}"
-            )
-            summary.append(f"  Final avg fitness (mean ± SE):")
-            summary.append(
-                f"    {stats['mean_avg_fitness'][-1]:.4f} ± "
-                f"{stats['stderr_avg_fitness'][-1]:.4f}"
-            )
-
-        summary.append("=" * 60)
-        return "\n".join(summary)
-
 
 def main():
-    """Example usage of the ComparativePlotter class."""
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Generate publication-quality plots from experiment databases"
+        description="Generate comparative plots for Fitness OR Novelty."
     )
+
+    parser.add_argument(
+        "--type",
+        choices=["fitness", "novelty"],
+        default="fitness",
+        help="Metric to plot: 'fitness' uses ind.fitness, 'novelty' uses ind.tags['novelty_score'].",
+    )
+
     parser.add_argument(
         "--experiment-dirs",
         nargs="+",
         required=True,
-        help="Directories containing experiment runs (one per genotype)",
+        help="Dirs containing .db files",
     )
     parser.add_argument(
-        "--names",
-        nargs="+",
-        required=True,
-        help="Names for each experiment group (e.g., 'CPPN' 'L-System' 'Tree')",
+        "--names", nargs="+", required=True, help="Names for each group"
     )
     parser.add_argument(
-        "--colors",
-        nargs="+",
-        default=None,
-        help="Colors for each group (matplotlib color strings)",
+        "--colors", nargs="+", default=None, help="Colors for each group"
     )
     parser.add_argument(
-        "--output", default="fitness_comparison.png", help="Output file path"
+        "--output", default="comparison.png", help="Output file path"
     )
+
+    # Plot modes (best/avg/combined)
     parser.add_argument(
-        "--plot-type",
+        "--plot-mode",
         choices=["best", "avg", "combined"],
         default="best",
-        help="Type of plot to generate",
+        help="Which statistic to plot",
     )
+
     parser.add_argument(
-        "--use-stderr",
-        action="store_true",
-        help="Use standard error instead of standard deviation",
-    )
-    parser.add_argument(
-        "--show", action="store_true", help="Display plot interactively"
+        "--use-stderr", action="store_true", help="Use standard error bars"
     )
     parser.add_argument("--title", default=None, help="Plot title")
 
     args = parser.parse_args()
 
     if len(args.experiment_dirs) != len(args.names):
-        raise ValueError(
-            "Number of experiment directories must match number of names"
-        )
+        raise ValueError("Count of directories must match count of names")
 
-    # Default colors if not provided
+    # Default colors
     if args.colors is None:
-        default_colors = [
-            "#1f77b4",
-            "#ff7f0e",
-            "#2ca02c",
-            "#d62728",
-            "#9467bd",
-            "#8c564b",
-            "#e377c2",
-            "#7f7f7f",
-        ]
-        args.colors = default_colors[: len(args.names)]
+        args.colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"]
+        # Cycle if needed
+        while len(args.colors) < len(args.names):
+            args.colors += args.colors
 
-    # Create plotter
-    plotter = ComparativePlotter()
+    # Initialize with the specific type
+    plotter = ComparativePlotter(metric_type=args.type)
 
-    # Add experiment groups
     for name, exp_dir, color in zip(
         args.names, args.experiment_dirs, args.colors
     ):
@@ -744,33 +605,29 @@ def main():
             name=name, db_directory=exp_dir, color=color
         )
 
-    # Print summary
-    print(plotter.get_statistics_summary())
+    # --- PRINT BEST RESULTS ---
+    plotter.print_best_results()
+    # --------------------------
 
-    # Generate plot
-    if args.plot_type == "best":
-        plotter.plot_average_best_fitness(
+    # Generate requested plot
+    if args.plot_mode == "best":
+        plotter.plot_average_best(
             save_path=args.output,
             title=args.title,
             use_stderr=args.use_stderr,
-            show_plot=args.show,
         )
-    elif args.plot_type == "avg":
-        plotter.plot_average_fitness(
+    elif args.plot_mode == "avg":
+        plotter.plot_average_mean(
             save_path=args.output,
             title=args.title,
             use_stderr=args.use_stderr,
-            show_plot=args.show,
         )
-    else:  # combined
+    else:
         plotter.plot_combined(
             save_path=args.output,
             title=args.title,
             use_stderr=args.use_stderr,
-            show_plot=args.show,
         )
-
-    console.log(f"Plot saved to: {args.output}")
 
 
 if __name__ == "__main__":

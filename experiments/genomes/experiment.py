@@ -79,22 +79,14 @@ class GenomeEAExperiment:
         output_folder: Path | None = None,
         base_seed: int = 42,
         genotype_override: str | None = None,
+        task_override: str | None = None,  # <--- 1. ADD THIS
     ):
-        """Initialize the experiment runner.
-
-        Parameters
-        ----------
-        config_path : Path
-            Path to the TOML configuration file
-        output_folder : Path | None, optional
-            Output folder for database files. If None, uses config default
-        base_seed : int, optional
-            Base random seed for reproducibility, by default 42
-        """
+        """Initialize the experiment runner."""
         self.config_path = config_path
         self.output_folder = output_folder
         self.base_seed = base_seed
         self.genotype_override = genotype_override
+        self.task_override = task_override  # <--- 2. STORE IT
 
         # Validate config file exists
         if not self.config_path.exists():
@@ -107,24 +99,16 @@ class GenomeEAExperiment:
         run_idx: int | None = None,
         seed: int | None = None,
     ) -> EASettings:
-        """Read and parse the configuration file.
-
-        Parameters
-        ----------
-        run_idx : int | None, optional
-            Run index for naming database files. If None, uses default name
-        seed : int | None, optional
-            Random seed for this run. If None, uses base_seed
-
-        Returns
-        -------
-        EASettings
-            Configured settings for the evolutionary algorithm
-        """
+        """Read and parse the configuration file."""
         cfg = tomllib.loads(self.config_path.read_text())
 
         # Resolve the active operators from the chosen genotype profile
         gname = self.genotype_override or cfg["run"]["genotype"]
+
+        # --- 3. APPLY TASK OVERRIDE HERE ---
+        task = self.task_override or cfg["run"]["task"]
+        # -----------------------------------
+
         gblock = cfg["genotypes"][gname]
         mutation_name = cfg["run"].get(
             "mutation", gblock["defaults"]["mutation"]
@@ -132,11 +116,14 @@ class GenomeEAExperiment:
         crossover_name = cfg["run"].get(
             "crossover", gblock["defaults"]["crossover"]
         )
-        task = cfg["run"]["task"]
+
+        # 'task' variable is already updated above, so lines below will
+        # automatically fetch parameters for the *new* task
         include_diversity = cfg["run"]["include_diversity_measure"]
         mutation_params = gblock.get("mutation", {}).get("params", {})
         crossover_params = gblock.get("crossover", {}).get("params", {})
 
+        # This now fetches params for the overridden task
         task_params = cfg["task"].get(task, {}).get("params", {})
         include_diversity_measure_params = (
             cfg["task"].get("evolve_for_novelty", {}).get("params", {})
@@ -371,26 +358,62 @@ class GenomeEAExperiment:
             Population with offspring added
         """
         parents = [ind for ind in population if ind.tags.get("ps", False)]
-        for idx in range(0, len(parents) - 1, 2):
-            parent_i = parents[idx]
-            parent_j = parents[idx + 1]
-            genotype_i, genotype_j = config.crossover(
-                config.genotype.from_json(parent_i.genotype),
-                config.genotype.from_json(parent_j.genotype),
-                **config.crossover_params,
-            )
 
-            child_i = Individual()
-            child_i.genotype = genotype_i.to_json()
-            child_i.tags = {"mut": True}
-            child_i.requires_eval = True
+        if config.crossover.which_crossover == "revde":
+            # Ensure we have groups of 3
+            limit = (len(parents) // 3) * 3
 
-            child_j = Individual()
-            child_j.genotype = genotype_j.to_json()
-            child_j.tags = {"mut": True}
-            child_j.requires_eval = True
+            for idx in range(0, limit, 3):
+                # 1. Get the Individuals
+                ind_i = parents[idx]
+                ind_j = parents[idx + 1]
+                ind_k = parents[idx + 2]
 
-            population.extend([child_i, child_j])
+                # 2. Deserialize JSON strings to Genotype objects
+                # We use the config helper to turn the JSON string into a Python object (e.g. NDEGenome)
+                gen_i = config.genotype.from_json(ind_i.genotype)
+                gen_j = config.genotype.from_json(ind_j.genotype)
+                gen_k = config.genotype.from_json(ind_k.genotype)
+
+                # 3. Perform Crossover (returns tuple of Genotype objects)
+                offspring_genotypes = config.crossover(
+                    parent_i=gen_i,
+                    parent_j=gen_j,
+                    parent_k=gen_k,
+                    **config.crossover_params,
+                )
+
+                # 4. Create new Individuals from results
+                for child_genome in offspring_genotypes:
+                    child = Individual()
+                    # Convert the Genotype object back to JSON for storage
+                    child.genotype = child_genome.to_json()
+                    child.tags = {
+                        "mut": False
+                    }  # Usually offspring should be marked for mutation
+                    child.requires_eval = True
+                    population.append(child)
+        else:
+            for idx in range(0, len(parents) - 1, 2):
+                parent_i = parents[idx]
+                parent_j = parents[idx + 1]
+                genotype_i, genotype_j = config.crossover(
+                    config.genotype.from_json(parent_i.genotype),
+                    config.genotype.from_json(parent_j.genotype),
+                    **config.crossover_params,
+                )
+
+                child_i = Individual()
+                child_i.genotype = genotype_i.to_json()
+                child_i.tags = {"mut": True}
+                child_i.requires_eval = True
+
+                child_j = Individual()
+                child_j.genotype = genotype_j.to_json()
+                child_j.tags = {"mut": True}
+                child_j.requires_eval = True
+
+                population.extend([child_i, child_j])
         return population
 
     def _mutation(

@@ -64,6 +64,12 @@ def main():
         default=None,
         help="Override genotype specified in config (e.g., 'tree', 'cppn', 'lsystem')",
     )
+    parser.add_argument(
+        "--task",
+        type=str,
+        default=None,
+        help="Override task specified in config (e.g., 'evolve_to_copy', 'evolve_for_novelty')",
+    )
 
     args = parser.parse_args()
 
@@ -73,6 +79,7 @@ def main():
         output_folder=args.output,
         base_seed=args.seed,
         genotype_override=args.genotype,
+        task_override=args.task,
     )
 
     # Run experiment based on mode

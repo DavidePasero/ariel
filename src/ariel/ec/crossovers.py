@@ -14,9 +14,8 @@ import numpy as np
 from rich.console import Console
 from rich.traceback import install
 
-from ariel.ec.genotypes.cppn.cppn_genome import CPPN_genotype
-
 # Local libraries
+from ariel.ec.genotypes.cppn.cppn_genome import CPPN_genotype
 from ariel.ec.genotypes.lsystem.l_system_genotype import LSystemDecoder
 
 if TYPE_CHECKING:
@@ -24,6 +23,8 @@ if TYPE_CHECKING:
     from ariel.ec.genotypes.cppn.node import Node
     from ariel.ec.genotypes.genotype import Genotype
     from ariel.ec.genotypes.tree.tree_genome import TreeGenome
+    from ariel.ec.genotypes.nde.nde import NDEGenome
+
 
 from ariel.ec.genotypes.genotype import MAX_MODULES
 
@@ -69,7 +70,7 @@ class Crossover(ABC):
         parent_i: Genotype,
         parent_j: Genotype,
         **kwargs: dict,
-    ) -> tuple[Genotype, Genotype]:
+    ) -> tuple[Genotype, ...]:
         """Perform crossover on two genotypes.
 
         Parameters
@@ -725,8 +726,110 @@ class CPPNCrossover(Crossover):
                 if other.fitness == fitter.fitness:
                     try_add_copy(conn_b, other)
 
-        # Offspring 1 unchanged (copy parent_i to keep your API)
+        # Offspring 1 unchanged
         return parent_i.copy(), child
+
+
+class NDECrossover(Crossover):
+    @staticmethod
+    def one_point(
+        parent_i: NDEGenome,
+        parent_j: NDEGenome,
+        **kwargs,
+    ) -> tuple[NDEGenome, NDEGenome]:
+        from ariel.ec.genotypes.nde.nde import NDEGenome
+
+        # Prep
+        parent_i_arr_shape = np.array(parent_i.individual).shape
+        parent_j_arr_shape = np.array(parent_j.individual).shape
+        parent_i_arr = np.array(parent_i.individual).flatten().copy()
+        parent_j_arr = np.array(parent_j.individual).flatten().copy()
+
+        # Ensure parents have the same length
+        if parent_i_arr_shape != parent_j_arr_shape:
+            msg = "Parents must have the same length"
+            raise ValueError(msg)
+
+        # Select crossover point
+        crossover_point = RNG.integers(0, len(parent_i_arr))
+
+        # Copy over parents
+        child1 = parent_i_arr.copy()
+        child2 = parent_j_arr.copy()
+
+        # Perform crossover
+        child1[crossover_point:] = parent_j_arr[crossover_point:]
+        child2[crossover_point:] = parent_i_arr[crossover_point:]
+
+        # Correct final shape
+        child1 = NDEGenome(individual=child1.reshape(parent_i_arr_shape))
+        child2 = NDEGenome(individual=child2.reshape(parent_j_arr_shape))
+        return child1, child2
+
+    @staticmethod
+    def revde(
+        parent_i: NDEGenome,
+        parent_j: NDEGenome,
+        parent_k: NDEGenome,
+        scaling_factor: float,
+        **kwargs,
+    ) -> tuple[NDEGenome, NDEGenome, NDEGenome]:
+        from ariel.ec.genotypes.nde.nde import NDEGenome
+
+        original_shape = parent_i.individual.shape
+
+        parent_i_genome = parent_i.individual.flatten()
+        parent_j_genome = parent_j.individual.flatten()
+        parent_k_genome = parent_k.individual.flatten()
+
+        # Passed parameters
+        f = scaling_factor
+        f2 = f**2
+        f3 = f**3
+
+        # Prep work
+        a = 1 - f2
+        b = f + f2
+        c = -f + f2 + f3
+        d = 1 - (2 * f2) - f3
+
+        # Linear transformation matrix
+        r_matrix = np.array([
+            [1, f, -f],
+            [-f, a, b],
+            [b, c, d],
+        ])
+
+        # Ensure parents have the same shape
+        if not (
+            parent_i_genome.shape
+            == parent_j_genome.shape
+            == parent_k_genome.shape
+        ):
+            msg = "Parents must have the same shape"
+            raise ValueError(msg)
+
+        # Perform mutation
+        # 1. Stack parents to shape (3, 3, n_genes)
+        # 2. Reshape to (3, N) where N is total genes (flat) -> (3, 3*n_genes)
+        x_matrix = np.stack((
+            parent_i_genome,
+            parent_j_genome,
+            parent_k_genome,
+        ))
+
+        # 3. Matrix Multiplication: (3,3) @ (3, 3*n_genes) -> (3, 3*n_genes)
+        out = r_matrix @ x_matrix
+
+        # 4. Reshape back to original dimensions and unpack
+        y1 = out[0].reshape(original_shape)
+        y2 = out[1].reshape(original_shape)
+        y3 = out[2].reshape(original_shape)
+
+        child_i = NDEGenome(y1)
+        child_j = NDEGenome(y2)
+        child_k = NDEGenome(y3)
+        return child_i, child_j, child_k
 
 
 def tree_main():

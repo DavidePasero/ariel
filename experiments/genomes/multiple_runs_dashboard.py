@@ -252,7 +252,17 @@ class MultipleRunsDashboard:
             return config.genotype.from_json(individual.genotype).to_digraph()
 
         self.analyzer.load_population(population, decoder)
-        self.analyzer.compute_fitness_scores()
+
+        if (
+            hasattr(self.analyzer, "target_descriptors")
+            and self.analyzer.target_descriptors is not None
+            and len(self.analyzer.target_descriptors) > 0
+        ):
+            self.analyzer.compute_fitness_scores()
+        else:
+            # If no targets, we cannot compute morphology-based fitness scores
+            # (Note: The dashboard usually relies on ind.fitness from the DB anyway for the main plots)
+            self.analyzer.fitness_scores = []
 
         # Cache the results
         self._descriptor_cache[cache_key] = {
