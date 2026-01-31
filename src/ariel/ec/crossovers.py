@@ -236,7 +236,7 @@ class TreeCrossover(Crossover):
         # Restore parent handles for caller (as in your koza_default)
         parent_i = parent_i_old
         parent_j = parent_j_old
-        return child1, child2
+        return child1.copy(), child2.copy()
 
 
 class LSystemCrossover(Crossover):

@@ -216,14 +216,15 @@ class ComparativePlotter:
         std_avg = np.zeros(max_generation)
         stderr_avg = np.zeros(max_generation)
 
-        # Also store per-run bests for final reporting
-        run_bests = []
+        # Store per-run bests with generation info
+        run_bests_info = []
 
         for populations, _ in runs_data:
-            # Find the absolute best value reached in this specific run
+            # Track best for this specific run
             run_max_val = -float("inf")
+            run_max_gen = -1
 
-            for population in populations:
+            for gen_idx, population in enumerate(populations):
                 if not population:
                     continue
 
@@ -239,10 +240,12 @@ class ComparativePlotter:
 
                 if vals:
                     current_max = max(vals)
+                    # Use >= to find the LATEST generation if values are equal (or > for EARLIEST)
                     if current_max > run_max_val:
                         run_max_val = current_max
+                        run_max_gen = gen_idx
 
-            run_bests.append(run_max_val)
+            run_bests_info.append({"val": run_max_val, "gen": run_max_gen})
 
         for gen_idx in range(max_generation):
             best_values = []
@@ -254,17 +257,13 @@ class ComparativePlotter:
                     if population:
                         # --- DATA EXTRACTION SWITCH ---
                         if self.metric_type == "novelty":
-                            # Extract novelty_score from tags
                             values = []
                             for ind in population:
-                                # Safe get, default to 0.0 if missing to avoid crashes
                                 val = ind.tags.get("novelty_score")
                                 if val is None:
-                                    # Fallback if using 'novelty' key instead of 'novelty_score'
                                     val = ind.tags.get("novelty", 0.0)
                                 values.append(float(val))
                         else:
-                            # Standard fitness
                             values = [ind.fitness for ind in population]
                         # ------------------------------
 
@@ -272,7 +271,6 @@ class ComparativePlotter:
                             best_values.append(max(values))
                             avg_values.append(np.mean(values))
 
-            # Helper to calculate stats safely
             def calc_stat(data_list, out_mean, out_std, out_stderr, idx):
                 if data_list:
                     out_mean[idx] = np.mean(data_list)
@@ -292,7 +290,7 @@ class ComparativePlotter:
             "mean_avg": mean_avg,
             "std_avg": std_avg,
             "stderr_avg": stderr_avg,
-            "run_bests": run_bests,  # Store per-run bests
+            "run_bests_info": run_bests_info,  # UPDATED KEY
         }
 
     def print_best_results(self):
@@ -302,30 +300,42 @@ class ComparativePlotter:
         )
         table.add_column("Experiment Group", style="cyan", no_wrap=True)
         table.add_column("Runs", justify="center")
-        table.add_column("Best Overall", justify="right", style="green")
+        table.add_column("Best Overall (Gen)", justify="right", style="green")
         table.add_column("Mean Best (± Std)", justify="right")
-        table.add_column("Worst Best", justify="right", style="red")
+        table.add_column("Worst Best (Gen)", justify="right", style="red")
 
         for name, group in self.experiment_groups.items():
-            run_bests = group["statistics"]["run_bests"]
-            # Filter out -inf if any runs failed completely
-            valid_bests = [x for x in run_bests if x != -float("inf")]
+            run_info = group["statistics"]["run_bests_info"]
 
-            if not valid_bests:
-                table.add_row(name, str(len(run_bests)), "N/A", "N/A", "N/A")
+            # Filter out runs that failed (-inf)
+            valid_runs = [r for r in run_info if r["val"] != -float("inf")]
+
+            if not valid_runs:
+                table.add_row(name, str(len(run_info)), "N/A", "N/A", "N/A")
                 continue
 
-            best_overall = np.max(valid_bests)
-            mean_best = np.mean(valid_bests)
-            std_best = np.std(valid_bests)
-            worst_best = np.min(valid_bests)
+            # Extract just the values for mean/std calc
+            values = [r["val"] for r in valid_runs]
+
+            # Find Best Overall (Value + Gen)
+            best_run = max(valid_runs, key=lambda x: x["val"])
+            best_overall = best_run["val"]
+            best_gen = best_run["gen"]
+
+            # Find Worst Best (Value + Gen)
+            worst_run = min(valid_runs, key=lambda x: x["val"])
+            worst_best = worst_run["val"]
+            worst_gen = worst_run["gen"]
+
+            mean_best = np.mean(values)
+            std_best = np.std(values)
 
             table.add_row(
                 name,
-                str(len(run_bests)),
-                f"{best_overall:.4f}",
+                str(len(run_info)),
+                f"{best_overall:.4f} (G{best_gen})",
                 f"{mean_best:.4f} ± {std_best:.4f}",
-                f"{worst_best:.4f}",
+                f"{worst_best:.4f} (G{worst_gen})",
             )
 
         console.print(table)

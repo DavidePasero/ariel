@@ -5,13 +5,13 @@
 [run]
 # Choose which genotype profile to use for this run.
 # One of: "tree", "lsystem", "cppn", "nde"
-genotype = "nde"
+genotype = "tree"
 
 # Choose which (morphological) task we want to try
 # One of "evolve_to_copy", "evolve_to_copy_sequence_normal", "evolve_to_copy_sequence_reverse", "evolve_for_novelty", "no_fitness"
 task = "evolve_to_copy"
 
-include_diversity_measure = true
+include_diversity_measure = false
 
 [task.evolve_to_copy.params]
 target_robot_path = "experiments/genomes/target_robots/spider_big.json"
@@ -40,7 +40,7 @@ distance_metric = "descriptor"
 quiet = false
 is_maximisation = true
 first_generation_id = 0
-num_of_generations = 200
+num_of_generations = 10
 target_population_size = 100
 
 # =========================
