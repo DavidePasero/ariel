@@ -19,7 +19,10 @@
 
 This project uses [uv](https://docs.astral.sh/uv/).
 
-First set **config.toml** with the settings you want to use in the experiments. With the command line you can only override genotype and task.
+First set **config.toml** with the settings you want to use in the experiments. With the command line you can only override genotype and task. Things that might be interesting to set in the config.toml:
+- Crossover method and parameters
+- Mutation method and parameters
+- Include population diversity measure (bool)
 
 To run the experiments for reproducibility use:
 
