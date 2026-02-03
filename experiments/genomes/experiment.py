@@ -465,6 +465,8 @@ class GenomeEAExperiment:
         Population
             Population with fitness values updated
         """
+        for ind in population:
+            ind.genotype = config.genotype.from_json(ind.genotype).to_json()
         fitness_function = FITNESS_FUNCTIONS[config.task]
         population = fitness_function(population, config, ea)
         for ind in population:
@@ -520,7 +522,7 @@ class GenomeEAExperiment:
         """
         random.shuffle(population)
         current_pop_size = len(population)
-        for idx in range(len(population)):
+        for idx in range(len(population)-1):
             ind_i = population[idx]
             ind_j = population[idx + 1]
 
@@ -680,7 +682,7 @@ class GenomeEAExperiment:
         ea.run()
 
         # Get final statistics
-        best = ea.get_solution(only_alive=False)
+        best = ea.get_solution(only_alive=True)
         median = ea.get_solution("median", only_alive=False)
         worst = ea.get_solution("worst", only_alive=False)
 
@@ -688,9 +690,9 @@ class GenomeEAExperiment:
         fitnesses = []
         for i in range(config.num_of_generations):
             ea.fetch_population(
-                only_alive=False,
+                only_alive=True,
                 best_comes=None,
-                custom_logic=[Individual.time_of_birth == i],
+                #custom_logic=[Individual.time_of_birth == i],
             )
             gen_fitness_values = [ind.fitness for ind in ea.population]
             if gen_fitness_values:

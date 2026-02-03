@@ -7,6 +7,7 @@ from collections.abc import Callable
 from functools import reduce
 import numpy as np
 from typing import TYPE_CHECKING
+import uuid
 
 from ariel.ec.genotypes.genotype import Genotype
 
@@ -300,8 +301,8 @@ class TreeNode:  # noqa: PLR0904
             self.module_type,
             config.ModuleFaces.BOTTOM,
         )
-
-        self._id = id(self)
+        self._id=uuid.uuid4().int
+        #self._id = id(self)
 
     @property
     def id(self) -> int:
@@ -634,26 +635,45 @@ class TreeNode:  # noqa: PLR0904
             replacing=True,
         )
 
-    def copy(self) -> TreeNode:
-        """Create a deep copy of this node and all its children."""
-        # Create new module instance
+    #def copy(self) -> TreeNode:
+    #    """Create a deep copy of this node and all its children."""
+    #    # Create new module instance
+    #    new_module = config.ModuleInstance(
+    #        type=self.module_type,
+    #        rotation=self.rotation,
+    #        links={},  # Will be rebuilt
+    #    )
+#
+#        # Create new node
+#        new_node = TreeNode(
+#            new_module,
+#            depth=self._depth,
+#        )
+#
+#        # Recursively copy children
+#        for face, child in self.children.items():
+#            child_copy = child.copy()
+#            new_node._set_face(face, child_copy)
+#
+#        return new_node
+
+    def copy(self, depth_offset: int = 0) -> TreeNode:
+        """Create a 100% isolated deep copy of this node and all descendants."""
+        # Create a fresh ModuleInstance to ensure link dictionaries aren't shared
         new_module = config.ModuleInstance(
             type=self.module_type,
             rotation=self.rotation,
-            links={},  # Will be rebuilt
+            links={} # Start with empty links to be rebuilt by _set_face
         )
-
-        # Create new node
         new_node = TreeNode(
             new_module,
-            depth=self._depth,
+            depth=self._depth + depth_offset,
         )
-
-        # Recursively copy children
+        # Explicitly copy children
         for face, child in self.children.items():
-            child_copy = child.copy()
-            new_node._set_face(face, child_copy)
-
+            if child.module_type != config.ModuleType.NONE:
+                # Recursive call ensures the entire subtree is isolated
+                new_node._set_face(face, child.copy(depth_offset), replacing=True)
         return new_node
 
     def __copy__(self) -> TreeNode:

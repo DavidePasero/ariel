@@ -8,6 +8,7 @@ from scipy.spatial.distance import cdist
 
 from ariel.ec.a001 import Individual
 from ariel.ec.a004 import EA
+import copy
 
 type Population = list[Individual]
 
@@ -21,9 +22,10 @@ def _eval_single_copy(
     """Helper to evaluate a single individual against a target graph."""
     genotype = config.genotype.from_json(genotype_json)
     ind_digraph = genotype.to_digraph()
+    local_target=copy.deepcopy(target_graph)
     fitness = config.morphology_analyzer.compute_fitness_score(
         ind_digraph,
-        target_graph,
+        local_target,
     )
     return fitness
 
