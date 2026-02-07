@@ -50,7 +50,7 @@ class NoveltySearchDashboard:
             decoder: Function to decode Individual genotype to robot graph
             config: Evolution configuration object
         """
-        self.populations = populations
+        self.populations = populations[:-1]
         self.decoder = decoder
         self.config = config
         self.analyzer = PlotlyMorphologyAnalyzer()
@@ -163,7 +163,7 @@ class NoveltySearchDashboard:
 
     def _setup_layout(self):
         """Setup the dashboard layout."""
-        max_generation = len(self.populations) - 1
+        max_generation = len(self.populations) - 2
 
         self.app.layout = html.Div([
             html.H1(
