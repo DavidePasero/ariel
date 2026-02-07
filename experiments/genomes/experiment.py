@@ -465,8 +465,8 @@ class GenomeEAExperiment:
         Population
             Population with fitness values updated
         """
-        for ind in population:
-            ind.genotype = config.genotype.from_json(ind.genotype).to_json()
+        #for ind in population:
+        #    ind.genotype = config.genotype.from_json(ind.genotype).to_json()
         fitness_function = FITNESS_FUNCTIONS[config.task]
         population = fitness_function(population, config, ea)
         for ind in population:

@@ -143,62 +143,79 @@ class IntegerMutator(Mutation):
 
 class TreeMutator(Mutation):
     @staticmethod
-    def _random_tree(
-        max_depth: int = 2, branching_prob: float = 0.5
-    ) -> Genotype:
-        """Generate a random tree with pheno_configurable branching probability."""
-        from ariel.ec.genotypes.tree.tree_genome import TreeGenome, TreeNode
-
-        genome = TreeGenome.default_init()  # Start with CORE
-        face = RNG.choice(genome.root.available_faces())
-        subtree = TreeNode.random_tree_node(
-            max_depth=max_depth - 1, branch_prob=branching_prob
-        )
-        if subtree:
-            genome.root._set_face(face, subtree)
-        return genome
-
-    @staticmethod
     def random_subtree_replacement(
         individual: Genotype,
         max_subtree_depth: int = 2,
         branching_prob: float = 0.5,
     ) -> Genotype:
-        """Replace a random subtree with a new random subtree."""
-        from ariel.ec.genotypes.tree.tree_genome import TreeNode
+        if individual.tree.number_of_nodes()==1:
+            new_tree=individual.create_random_tree(max_depth=max_subtree_depth,branching_prob=branching_prob,existing_nodes=individual.tree.number_of_nodes(),max_modules=MAX_MODULES)
+            individual.tree=new_tree.tree
+            individual.root_id=new_tree.root_id
+        else:
+            node_id = individual.get_random_node() 
+            new_subtree = individual.create_random_subtree(max_depth=max_subtree_depth,branching_prob=branching_prob,existing_nodes=individual.tree.number_of_nodes(),max_modules=MAX_MODULES)
+            individual.graft_subtree_inplace(new_subtree,node_id)
+        return individual
 
-        new_individual = copy.copy(individual)
+    #@staticmethod
+    #def _random_tree(
+    #    max_depth: int = 2, branching_prob: float = 0.5
+    #) -> Genotype:
+    #    """Generate a random tree with pheno_configurable branching probability."""
+    #    from ariel.ec.genotypes.tree.tree_genome import TreeGenome, TreeNode
 
-        # Collect all nodes in the tree
-        all_nodes = new_individual.root.get_all_nodes(exclude_root=True)
+#        genome = TreeGenome.default_init()  # Start with CORE
+#        face = RNG.choice(genome.root.available_faces())
+#        subtree = TreeNode.random_tree_node(
+#            max_depth=max_depth - 1, branch_prob=branching_prob
+#        )
+#        if subtree:
+#            genome.root._set_face(face, subtree)
+#        return genome
 
-        if not all_nodes:
-            # print("Tree has no nodes to replace; generating a new random tree.")
-            return TreeMutator._random_tree(
-                max_depth=max_subtree_depth, branching_prob=branching_prob
-            )
+#    @staticmethod
+#    def random_subtree_replacement(
+#        individual: Genotype,
+#        max_subtree_depth: int = 2,
+#        branching_prob: float = 0.5,
+#    ) -> Genotype:
+#        """Replace a random subtree with a new random subtree."""
+#        from ariel.ec.genotypes.tree.tree_genome import TreeNode
+#
+#        new_individual = copy.copy(individual)
+#
+#        # Collect all nodes in the tree
+#        all_nodes = new_individual.root.get_all_nodes(exclude_root=True)
+#
+#        if not all_nodes:
+#            # print("Tree has no nodes to replace; generating a new random tree.")
+#            return TreeMutator._random_tree(
+#                max_depth=max_subtree_depth, branching_prob=branching_prob
+#            )
+#
+#        # Generate a new random subtree
+#        new_subtree = TreeNode.random_tree_node(
+#            max_depth=max_subtree_depth, branch_prob=branching_prob
+#        )
+#
+#        i = 0
+#        node_to_replace = RNG.choice(all_nodes)
+#        while (
+#            new_individual.root.num_descendants
+#            - node_to_replace.num_descendants
+#            + new_subtree.num_descendants
+#            > MAX_MODULES
+#        ):
+#            node_to_replace = RNG.choice(all_nodes)
+#            i += 1
+#            if i >= MAX_ATTEMPTS:
+#                return new_individual  # Return original if no valid replacement found
+#
+#        new_individual.root.replace_node(node_to_replace, new_subtree)
+#
+#        return new_individual
 
-        # Generate a new random subtree
-        new_subtree = TreeNode.random_tree_node(
-            max_depth=max_subtree_depth, branch_prob=branching_prob
-        )
-
-        i = 0
-        node_to_replace = RNG.choice(all_nodes)
-        while (
-            new_individual.root.num_descendants
-            - node_to_replace.num_descendants
-            + new_subtree.num_descendants
-            > MAX_MODULES
-        ):
-            node_to_replace = RNG.choice(all_nodes)
-            i += 1
-            if i >= MAX_ATTEMPTS:
-                return new_individual  # Return original if no valid replacement found
-
-        new_individual.root.replace_node(node_to_replace, new_subtree)
-
-        return new_individual
 
 
 class LSystemMutator(Mutation):

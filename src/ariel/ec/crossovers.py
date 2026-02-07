@@ -249,39 +249,32 @@ class TreeCrossover(Crossover):
         parent_b: TreeGenome,
         koza_internal_node_prob: float = 0.9,
     ) -> tuple[TreeGenome, TreeGenome]:
-        # 1. Immediate Deep Copying to isolate from the population
-        # This prevents the 'final generation' spike caused by mutating references
-        child1_genome = copy.deepcopy(parent_a) 
-        child2_genome = copy.deepcopy(parent_b)
-        # 2. Extract roots after copying
-        root_i = child1_genome.root
-        root_j = child2_genome.root
-        nodes_i = root_i.get_all_nodes(exclude_root=True)
-        nodes_j = root_j.get_all_nodes(exclude_root=True)
-        if not nodes_i or not nodes_j:
-            return child1_genome, child2_genome
-        # 3. Selection and Size Validation
-        node_i = RNG.choice(nodes_i)
-        node_j = RNG.choice(nodes_j)
-        attempts = 0
-        while attempts < MAX_ATTEMPTS:
-            # Calculate resulting sizes without performing the swap yet
-            size_i = child1_genome.num_modules - node_i.num_descendants + node_j.num_descendants
-            size_j = child2_genome.num_modules - node_j.num_descendants + node_i.num_descendants
-            if size_i <= MAX_MODULES and size_j <= MAX_MODULES:
-                break    
-            node_i = RNG.choice(nodes_i)
-            node_j = RNG.choice(nodes_j)
-            attempts += 1
-        if attempts >= MAX_ATTEMPTS:
-            return child1_genome, child2_genome
-        # 4. Perform the swap on the COPIES
-        # We must copy the subtrees being swapped to ensure they don't share nodes
-        subtree_i_copy = copy.deepcopy(node_i)
-        subtree_j_copy = copy.deepcopy(node_j)
-        root_i.replace_node(node_i, subtree_j_copy)
-        root_j.replace_node(node_j, subtree_i_copy)
-        return child1_genome, child2_genome
+        child1 = parent_a.copy() 
+        child2 = parent_b.copy()
+        node_a = parent_a.get_random_node()
+        node_b = parent_b.get_random_node()
+        if child1.tree.number_of_nodes() > 1 and child2.tree.number_of_nodes() >1:
+            attempts = 0
+            while attempts < MAX_ATTEMPTS:
+                # Calculate resulting sizes without performing the swap yet
+                size_1 = child1.tree.number_of_nodes() - parent_a.get_subtree_size(node_a) + parent_b.get_subtree_size(node_b)
+                size_2 = child2.tree.number_of_nodes() - parent_b.get_subtree_size(node_b) + parent_a.get_subtree_size(node_a)
+                if size_1 <= MAX_MODULES and size_2 <= MAX_MODULES:
+                    break    
+                node_a = parent_a.get_random_node()
+                node_b = parent_b.get_random_node()
+                attempts += 1
+            if attempts >= MAX_ATTEMPTS:
+                return child1, child2
+            # 4. Perform the swap on the COPIES
+            # We must copy the subtrees being swapped to ensure they don't share nodes
+            subtree_a=parent_a.extract_subtree(node_a)
+            subtree_b=parent_b.extract_subtree(node_b)
+            child1.graft_subtree_inplace(subtree_b,node_a)
+            child2.graft_subtree_inplace(subtree_a,node_b)
+        #child1.display_tree()
+        #child2.display_tree()
+        return child1, child2
 
 class LSystemCrossover(Crossover):
     @staticmethod

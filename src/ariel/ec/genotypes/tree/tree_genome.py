@@ -1,6 +1,6 @@
 from __future__ import annotations
 import json
-import ariel.body_phenotypes.robogen_lite.config as config
+#import ariel.body_phenotypes.robogen_lite.config as config
 from collections import deque
 import networkx as nx
 from collections.abc import Callable
@@ -8,6 +8,8 @@ from functools import reduce
 import numpy as np
 from typing import TYPE_CHECKING
 import uuid
+import random
+from networkx.readwrite import json_graph
 
 from ariel.ec.genotypes.genotype import Genotype
 
@@ -19,9 +21,20 @@ SEED = 42
 RNG = np.random.default_rng(SEED)
 
 
+
+# ==========================================
+# 2. Tree Genome Class
+# ==========================================
+
 class TreeGenome(Genotype):
+    VALID_TYPES = {"C", "B", "H"}
+    VALID_ROTATIONS = {0, 45, 90, 135, 180, 225, 270, 315}
+    VALID_FACES = {"FRONT", "BACK", "TOP", "BOTTOM", "LEFT", "RIGHT"}
+
     def __init__(self, root: TreeNode | None = None):
-        self._root = root
+        self.tree = nx.DiGraph()
+        self.root_id=str(uuid.uuid4())
+        self.tree.add_node(self.root_id, type="C", rotation=0)
 
     @staticmethod
     def get_crossover_object() -> TreeCrossover:
@@ -42,722 +55,394 @@ class TreeGenome(Genotype):
         """Generate a new TreeGenome individual."""
         return TreeGenome.default_init()
 
-    def to_digraph(self, use_node_ids: bool = False) -> nx.DiGraph:
-        g = nx.DiGraph()
-        root = self.root
-        if root is None:
-            return g
-
-        # Stable mapping: either identity (node.id) or contiguous DFS ids.
-        if use_node_ids:
-            node_key = lambda n: n.id
-        else:
-            # Assign 0..N-1 in first-seen (DFS) order
-            seen: dict[int, int] = {}
-            next_id = 0
-
-            def node_key(n: TreeNode) -> int:
-                nonlocal next_id
-                if n.id not in seen:
-                    seen[n.id] = next_id
-                    next_id += 1
-                return seen[n.id]
-
-        def dfs(
-            parent: TreeNode | None,
-            child: TreeNode,
-            via_face: config.ModuleFaces | None,
-        ) -> None:
-            cid = node_key(child)
-            # Add/update child node with attributes (use enum names for JSON-friendliness)
-            g.add_node(
-                cid,
-                type=child.module_type.name,
-                rotation=child.rotation.name,
-                raw_id=child.id,
-            )
-
-            if parent is not None:
-                pid = node_key(parent)
-                g.add_edge(
-                    pid,
-                    cid,
-                    face=via_face.name if via_face is not None else None,
-                )
-
-            # Recurse over children (face -> subnode)
-            for face, sub in child.children.items():
-                dfs(child, sub, face)
-
-        dfs(None, root, None)
-        return g
-
     @classmethod
     def default_init(cls, *args, **kwargs):
         """Default instantiation with a core root."""
-        return cls(
-            root=TreeNode(
-                config.ModuleInstance(
-                    type=config.ModuleType.CORE,
-                    rotation=config.ModuleRotationsIdx.DEG_0,
-                    links={},
-                )
-            )
-        )
+        return cls()
 
-    @property
-    def root(self) -> TreeNode | None:
-        return self._root
+    def is_face_occupied(self, parent_id, face):
+        """
+        Checks if a specific face on the parent node already has a connection.
+        """
+        if parent_id not in self.tree:
+            raise KeyError(f"Node {parent_id} does not exist.")
+        
+        # Look at all outgoing edges from the parent
+        for _, _, edge_data in self.tree.out_edges(parent_id, data=True):
+            if edge_data.get("face") == face:
+                return True
+        return False
 
-    @root.setter
-    def root(self, value: TreeNode | None):
-        if self._root is not None:
-            raise ValueError("Root node cannot be changed once set.")
-        self._root = value
+    def add_node(self, node_type, rotation, parent_id, face):
+        """
+        Adds a node only if the target face on the parent is available.
+        """
+        if self.is_face_occupied(parent_id, face):
+            raise ValueError(f"Conflict: Face '{face}' on node '{parent_id}' is already occupied.")
 
-    @root.getter
-    def root(self) -> TreeNode | None:
-        return self._root
+        if node_type not in self.VALID_TYPES:
+            raise ValueError(f"Type must be {self.VALID_TYPES}")
+        
+        if rotation not in self.VALID_ROTATIONS:
+            raise ValueError(f"Rotation must be {self.VALID_ROTATIONS}")
+        node_id = str(uuid.uuid4())
+        self.tree.add_node(node_id, type=node_type, rotation=rotation)
+        self.tree.add_edge(parent_id, node_id, face=face)
+        return node_id
 
-    def __repr__(self) -> str:
-        """Return a nice string representation of the tree genome."""
-        if not self._root:
-            return "TreeGenome(empty)"
+    def remove_node(self, node_id):
+        if node_id == self.root:
+            raise ValueError("Cannot remove root.")
+        if node_id in self.tree:
+            descendants = list(nx.descendants(self.tree, node_id))
+            self.tree.remove_nodes_from(descendants + [node_id])
 
-        node_count = len(list(self._iter_nodes()))
-        lines = [f"TreeGenome({node_count} nodes):"]
-        lines.extend(self._format_node(self._root, "", True))
-        return "\n".join(lines)
+    def extract_subtree(self, node_id):
+        """
+        Creates a new independent StructuralGenome starting from node_id.
+        Useful for crossover operations.
+        """
+        if node_id not in self.tree:
+            raise KeyError(f"Node {node_id} not found.")
 
-    def _iter_nodes(self, exclude_nones=True):
-        """Iterator over all nodes in the genome."""
-        if self._root:
-            yield from self._iter_nodes_recursive(
-                self._root, exclude_nones=exclude_nones
-            )
+        # 1. Identify all nodes in the subtree
+        subtree_nodes = list(nx.descendants(self.tree, node_id)) + [node_id]
+        
+        # 2. Create a subgraph and deep copy it
+        subgraph = self.tree.subgraph(subtree_nodes).copy()
+        
+        id_mapping = {old: str(uuid.uuid4()) for old in subtree_nodes}
+        new_root_id = id_mapping[node_id]
+        
+        # 4. Relabel the nodes in the subgraph
+        new_graph = nx.relabel_nodes(subgraph, id_mapping, copy=True)
 
-    def _iter_nodes_recursive(self, node: TreeNode, exclude_nones=True):
-        """Recursively iterate over nodes."""
-        yield node
-        for child in node.children.values():
-            if exclude_nones and child.module_type == config.ModuleType.NONE:
-                continue
-            yield from self._iter_nodes_recursive(
-                child, exclude_nones=exclude_nones
-            )
-
-    def _format_node(
-        self,
-        node: TreeNode,
-        prefix: str,
-        is_last: bool,
-    ) -> list[str]:
-        """Helper method to format a node and its children recursively."""
-        connector = "└── " if is_last else "├── "
-        node_info = f"{node.module_type.name}({node.rotation.name}, depth={node._depth})"
-        lines = [f"{prefix}{connector}{node_info}"]
-
-        child_prefix = prefix + ("    " if is_last else "│   ")
-
-        if node.children:
-            child_items = list(node.children.items())
-            for i, (face, child) in enumerate(child_items):
-                is_last_child = i == len(child_items) - 1
-                face_connector = "└── " if is_last_child else "├── "
-                lines.append(f"{child_prefix}{face_connector}[{face.name}]")
-
-                grandchild_prefix = child_prefix + (
-                    "    " if is_last_child else "│   "
-                )
-                lines.extend(self._format_node(child, grandchild_prefix, True))
-
-        return lines
-
-    def add_child_to_node(
-        self,
-        node: TreeNode,
-        face: config.ModuleFaces,
-        child_module: config.ModuleInstance,
-    ):
-        """Helper method to add a child to a specific node. However, not recommended to use. Rather use"""
-        if face not in node.available_faces():
-            raise ValueError(f"Face {face} is not available on this node.")
-
-        child_node = TreeNode(child_module, depth=node._depth + 1)
-        setattr(node, face.name.lower(), child_node)
-
-    def find_node(self, target_id: int, method: str = "dfs") -> TreeNode | None:
-        """Find a node by ID in the entire genome."""
-        if not self._root:
-            return None
-
-        if method.lower() == "bfs":
-            return self._root.find_node_bfs(target_id)
-        else:
-            return self._root.find_node_dfs(target_id)
-
-    def find_nodes_by_type(
-        self, module_type: config.ModuleType, method: str = "dfs"
-    ) -> list[TreeNode]:
-        """Find all nodes of a specific module type."""
-        if not self._root:
-            return []
-
-        predicate = lambda node: node.module_type == module_type
-
-        if method.lower() == "bfs":
-            return self._root.find_all_nodes_bfs(predicate)
-        else:
-            return self._root.find_all_nodes_dfs(predicate)
-
-    def copy(self) -> "TreeGenome":
-        """Create a shallow copy of the TreeGenome."""
+        # 3. Initialize a new StructuralGenome instance
+        # We fetch the root node's data for the new tree
         new_genome = TreeGenome()
-        if self._root:
-            new_genome._root = self._root.copy()
+        
+        # 4. Overwrite the new_genome's tree with our extracted subgraph
+        new_genome.tree = new_graph
+        new_genome.root_id = new_root_id
+        
         return new_genome
 
-    def __copy__(self) -> "TreeGenome":
-        """Support for copy.copy()."""
-        return self.copy()
+    def remove_subtree(self, node_id):
+        """
+        Removes the specified node and all its descendants.
+        This effectively 'prunes' the branch from the genome.
+        """
+        if node_id not in self.tree:
+            raise KeyError(f"Node '{node_id}' not found in the tree.")
 
-    @property
-    def num_modules(self) -> int:
-        """Return the total number of modules in the genome."""
-        return len(list(self._iter_nodes(exclude_nones=True)))
+        if node_id == self.root_id:
+            raise ValueError(
+                "Cannot remove the root node via remove_subtree. "
+                "If you want to clear the tree, re-initialize the object."
+            )
 
-    # ---------- JSON serialization ----------
+        # 1. Find all descendants (children, grandchildren, etc.)
+        # nx.descendants returns a set of all nodes reachable from node_id
+        nodes_to_remove = list(nx.descendants(self.tree, node_id))
+        
+        # 2. Add the node itself to the list
+        nodes_to_remove.append(node_id)
+
+        # 3. Remove all identified nodes from the graph
+        # This also automatically removes any edges connected to these nodes
+        self.tree.remove_nodes_from(nodes_to_remove)
+
+    def get_node_on_face(self, parent_id, face):
+        """
+        Returns the ID of the node connected to the specified face of parent_id.
+        Returns None if the face is unoccupied.
+        """
+        if parent_id not in self.tree:
+            raise KeyError(f"Node {parent_id} not found in the genome.")
+
+        if face not in self.VALID_FACES:
+            raise ValueError(f"Invalid face name. Must be one of {self.VALID_FACES}")
+
+        # Iterate through outgoing edges from the parent
+        for _, child_id, edge_data in self.tree.out_edges(parent_id, data=True):
+            if edge_data.get("face") == face:
+                return child_id
+        
+        return None
+
+
+    def graft_subtree(self, subtree_genome, parent_id, face):
+        """
+        Grafts an existing subtree into this genome.
+        Assumes node IDs are unique UUIDs.
+        """
+        # 1. Basic Safety Checks
+        if parent_id not in self.tree:
+            raise KeyError(f"Parent node '{parent_id}' not found.")
+        
+        if self.is_face_occupied(parent_id, face):
+            raise ValueError(f"Face '{face}' on node '{parent_id}' is already occupied.")
+        # 2. Prepare the subtree root
+        # Update the rotation of the subtree's root to match the new connection point
+        subtree_root_id = subtree_genome.root_id
+
+        # 3. Merge the subtree graph into the current tree
+        # Since IDs are UUIDs, this will add new nodes/edges without overwriting
+        self.tree = nx.compose(self.tree, subtree_genome.tree)
+
+        # 4. Create the structural link (the 'Face' connection)
+        self.tree.add_edge(parent_id, subtree_root_id, face=face)
+
+    def graft_subtree_inplace(self, subtree_genome, target_node_id):
+        """
+        Removes the target_node_id and its entire subtree, then grafts 
+        the new subtree_genome onto the same parent and face.
+        """
+        if target_node_id == self.root_id:
+            raise ValueError("Cannot replace the root node in-place. Root must remain 'C'.")
+
+        if target_node_id not in self.tree:
+            raise KeyError(f"Node {target_node_id} not found.")
+
+        # 1. Identify the parent and the connection face before we delete the node
+        # In a tree, every node (except root) has exactly one predecessor
+        parent_id = list(self.tree.predecessors(target_node_id))[0]
+        edge_data = self.tree.get_edge_data(parent_id, target_node_id)
+        original_face = edge_data['face']
+
+        # 2. Remove the existing subtree at that location
+        # We use the previous remove_node logic to clean up descendants
+        self.remove_subtree(target_node_id)
+
+        # 3. Use our existing graft logic to plug the new genome into the hole
+        # We use the original_face so the new limb 'points' the same direction
+        self.graft_subtree(subtree_genome, parent_id, original_face)
+        
 
     @staticmethod
-    def from_dict(data: dict) -> "TreeGenome":
-        """Deserialize a genome from a dict produced by to_dict()."""
-        root_data = data.get("root")
-        root = None if root_data is None else TreeNode.from_dict(root_data)
-        return TreeGenome(root=root)
+    def create_random_subtree(max_depth=3, branching_prob=0.5,existing_nodes=0,max_modules=32):
+        """
+        Creates a new StructuralGenome composed of B and H nodes.
+        branching_prob: 0.0 to 1.0 chance that each available face will grow a new node.
+        """
+        # 1. Randomly pick root type (B or H)
+        root_type = random.choice(["B", "H"])
+        root_id = str(uuid.uuid4())
+        root_rotation = random.choice(list(TreeGenome.VALID_ROTATIONS))
+        
+        new_genome = TreeGenome()
+        new_genome.tree = nx.DiGraph()
+        new_genome.root_id=root_id
+        new_genome.tree.add_node(root_id, type=root_type, rotation=root_rotation)
+
+        
+        # 2. Start recursive growth
+        new_genome._grow_random_recursive(root_id, 1, max_depth, branching_prob,existing_nodes,max_modules)
+        
+        return new_genome
+    @staticmethod
+    def create_random_tree(max_depth=3, branching_prob=0.5,existing_nodes=0,max_modules=32):
+        """
+        Creates a new StructuralGenome composed of B and H nodes.
+        branching_prob: 0.0 to 1.0 chance that each available face will grow a new node.
+        """
+        # 1. Randomly pick root type (B or H)
+        root_type = "C"
+        root_id = str(uuid.uuid4())
+        root_rotation = 0
+        
+        new_genome = TreeGenome()
+        new_genome.tree = nx.DiGraph()
+        new_genome.root_id=root_id
+        new_genome.tree.add_node(root_id, type=root_type, rotation=root_rotation)
+
+        
+        # 2. Start recursive growth
+        new_genome._grow_random_recursive(root_id, 1, max_depth, branching_prob,existing_nodes,max_modules)
+        
+        return new_genome
+
+    def get_random_node(self):
+        """
+        Returns the ID of a random node in the tree, excluding the root.
+        Returns None if the tree only contains the root.
+        """
+        # Get all node IDs from the NetworkX graph
+        all_nodes = list(self.tree.nodes)
+        
+        # Filter out the root ID
+        non_root_nodes = [node for node in all_nodes if node != self.root_id]
+        
+        if not non_root_nodes:
+            print("Warning: Tree only contains the root node.")
+            return None
+            
+        return random.choice(non_root_nodes)    
+
+    def _grow_random_recursive(self, parent_id, depth, max_depth, branching_prob,existing_modules,max_modules):
+        if depth >= max_depth:
+            return
+
+        # Iterate through every possible face to decide if it sprouts a new component
+        available_faces = list(self.VALID_FACES)
+        random.shuffle(available_faces)
+
+        for face in available_faces:
+            # Check branching probability
+            if random.random() < branching_prob:
+                # Check if face is already occupied (just in case)
+                if not self.is_face_occupied(parent_id, face):
+                    node_type = random.choice(["B", "H"])
+                    rotation = random.choice(list(self.VALID_ROTATIONS))
+                    
+                    # Add node and recurse
+                    if existing_modules+1<max_modules:
+                        new_node_id = self.add_node(node_type, rotation, parent_id, face)
+                        self._grow_random_recursive(new_node_id, depth + 1, max_depth, branching_prob,existing_modules+1,max_modules)
+
+    def display_tree(self, current_node=None, indent="", is_last=True, prefix="Root"):
+        """
+        Recursively prints the tree structure in a human-readable format.
+        """
+        if current_node is None:
+            current_node = self.root_id
+
+        # Retrieve node data
+        node_data = self.tree.nodes[current_node]
+        node_type = node_data.get('type', '?')
+        rotation = node_data.get('rotation', 0)
+
+        # Create the visual marker for the current branch
+        marker = "└── " if is_last else "├── "
+        
+        # Print the current node's info
+        print(f"{indent}{marker}[{prefix}] Node: {current_node[:8]}... Type: {node_type}, Rot: {rotation}°")
+
+        # Prepare indentation for children
+        child_indent = indent + ("    " if is_last else "│   ")
+        
+        # Get all outgoing edges and their 'face' attribute
+        children = list(self.tree.out_edges(current_node, data=True))
+        
+        for i, (parent, child, edge_data) in enumerate(children):
+            face = edge_data.get('face', 'UNKNOWN')
+            is_last_child = (i == len(children) - 1)
+            # Recurse into the child node
+            self.display_tree(child, child_indent, is_last_child, prefix=face)
+    
+    def to_digraph(self):
+        """Returns the underlying NetworkX DiGraph object."""
+        # Returns a copy to prevent accidental external modification
+        return self.tree.copy()
 
     @staticmethod
     def from_json(json_str: str, **kwargs) -> "TreeGenome":
-        """Deserialize from a JSON string."""
-        return TreeGenome.from_dict(json.loads(json_str))
-
-    @staticmethod
-    def to_dict(robot_genome: "TreeGenome") -> dict:
-        """Serialize the genome into a pure-Python dict (JSON-friendly)."""
-        return {
-            "root": None
-            if robot_genome._root is None
-            else robot_genome._root.to_dict()
-        }
+        """Creates a new StructuralGenome instance from a JSON string."""
+        data = json.loads(json_str)
+        
+        # Reconstruct the NetworkX graph object
+        graph = json_graph.node_link_graph(data["graph_data"])
+        
+        # Create instance and restore state
+        root_id = data["root_id"]
+        # We initialize with placeholder data and then overwrite with the real tree
+        instance = TreeGenome()
+        instance.root_id=root_id
+        instance.tree = graph
+        
+        return instance
 
     def to_json(self, *, indent: int | None = 2) -> str:
-        """Serialize to a JSON string."""
-        return json.dumps(TreeGenome.to_dict(self), indent=indent)
-
-
-class TreeNode:  # noqa: PLR0904
-    def __init__(
-        self,
-        module: config.ModuleInstance | None = None,
-        depth: int = 0,
-        module_type: config.ModuleType | None = None,
-        module_rotation: config.ModuleRotationsIdx | None = None,
-    ):
-        if module is None:
-            assert module_type is not None, (
-                "Module type cannot be None if module is not specified"
-            )
-            assert module_rotation is not None, (
-                "Module rotation cannot be None if module is not specified"
-            )
-            module = config.ModuleInstance(
-                type=module_type, rotation=module_rotation, links={}
-            )
-        self.module_type = module.type
-        self.rotation = module.rotation
-        # Keep reference to the original module. Why? Because then the links get automatically filled and we can just read them out when decoding
-        self.module = module
-        self._depth = depth
-        self._front: TreeNode | None = TreeNode._init_face(
-            self.module_type,
-            config.ModuleFaces.FRONT,
-        )
-        self._back: TreeNode | None = TreeNode._init_face(
-            self.module_type,
-            config.ModuleFaces.BACK,
-        )
-        self._right: TreeNode | None = TreeNode._init_face(
-            self.module_type,
-            config.ModuleFaces.RIGHT,
-        )
-        self._left: TreeNode | None = TreeNode._init_face(
-            self.module_type,
-            config.ModuleFaces.LEFT,
-        )
-        self._top: TreeNode | None = TreeNode._init_face(
-            self.module_type,
-            config.ModuleFaces.TOP,
-        )
-        self._bottom: TreeNode | None = TreeNode._init_face(
-            self.module_type,
-            config.ModuleFaces.BOTTOM,
-        )
-        self._id=uuid.uuid4().int
-        #self._id = id(self)
-
-    @property
-    def id(self) -> int:
-        return self._id
-
-    @id.setter
-    def id(self, value: int | None):
-        raise ValueError("ID cannot be changed once set.")
-
-    @staticmethod
-    def _init_face(
-        module_type: config.ModuleType,
-        face: config.ModuleFaces,
-    ) -> TreeNode | None:
-        """Initialize a face attribute to None dummy NONE node based on module type."""
-        if face in config.ALLOWED_FACES[module_type]:
-            return TreeNode(
-                module_type=config.ModuleType.NONE,
-                module_rotation=config.ModuleRotationsIdx.DEG_0,
-            )
-        return None
-
-    @classmethod
-    def random_tree_node(
-        cls,
-        max_depth: int = 1,
-        branch_prob: float = 0.5,
-    ) -> TreeNode:
-        """Create a random tree node with random children up to max_depth."""
-        assert max_depth >= 0, "max_depth must be non-negative"
-
-        # Exclude CORE and NONE from random selection
-        module_type = RNG.choice([
-            mt
-            for mt in config.ModuleType
-            if mt not in {config.ModuleType.CORE, config.ModuleType.NONE}
-        ])
-        module_rotation = RNG.choice(list(config.ModuleRotationsIdx))
-        node = cls(module_type=module_type, module_rotation=module_rotation)
-
-        if max_depth == 0:
-            return node
-
-        available_faces = config.ALLOWED_FACES[module_type]
-
-        for face in available_faces:
-            # Create a child node or set to NONE based on branch probability
-            if RNG.random() > branch_prob:
-                continue
-            # Recursively create child nodes with reduced depth
-            child_node = cls.random_tree_node(max_depth - 1, branch_prob)
-            node._set_face(face, child_node)
-
-        return node
-
-    def _can_attach_to_face(
-        self,
-        face: config.ModuleFaces,
-        replacing: bool = False,
-    ) -> bool:
-        """Check if a node can be attached to the given face."""
-        face_attr = f"_{face.name.lower()}"
-        child_at_face = getattr(self, face_attr)
-        # If the face is available (not None) and it is currently initialized as a NONE module,
-        # then you can attach
-        return child_at_face is not None and (
-            child_at_face.module_type == config.ModuleType.NONE or replacing
-        )
-
-    def _set_face(
-        self,
-        face: config.ModuleFaces,
-        value: TreeNode,
-        replacing: bool = False,
-    ):
-        """Common method to validate and set a face attribute."""
-
-        if not self._can_attach_to_face(face, replacing=replacing):
-            raise ValueError(
-                f"Cannot attach to {face.name} face of {self.module_type}"
-            )
-
-        # Update the internal attribute with the actual node
-        setattr(self, f"_{face.name.lower()}", value)
-
-        # Update the module's links dictionary
-        self.module.links[face] = self._id
-
-    def _get_face_given_child(self, child_id: int) -> config.ModuleFaces | None:
-        # Weird flex
-        # ids_to_faces = reduce(lambda acc, x: {**acc, **x}, map(lambda face_node: {face_node[1].id: face_node[0]}, self.children.items()), {})
-        return {
-            face_node[1].id: face_node[0] for face_node in self.children.items()
-        }[child_id]
-
-    def face_mapping(self, face: config.ModuleFaces):
-        mapping = {
-            config.ModuleFaces.FRONT: self._front,
-            config.ModuleFaces.BACK: self._back,
-            config.ModuleFaces.RIGHT: self._right,
-            config.ModuleFaces.LEFT: self._left,
-            config.ModuleFaces.TOP: self._top,
-            config.ModuleFaces.BOTTOM: self._bottom,
+        """Converts the genome into a JSON-formatted string."""
+        # Convert the NetworkX structure to a node-link dictionary
+        graph_dict = json_graph.node_link_data(self.tree)
+        
+        # Package with the root_id metadata
+        full_package = {
+            "root_id": self.root_id,
+            "graph_data": graph_dict
         }
-        return mapping[face]
+        # Return as a serialized string
+        return json.dumps(full_package)
 
-    @property
-    def front(self) -> TreeNode | None:
-        return self._front
-
-    @front.setter
-    def front(self, value: TreeNode | TreeGenome | None):
-        self._set_face(config.ModuleFaces.FRONT, value)
-
-    @property
-    def back(self) -> TreeNode | None:
-        return self._back
-
-    @back.setter
-    def back(self, value: TreeNode | TreeGenome | None):
-        self._set_face(config.ModuleFaces.BACK, value)
-
-    @property
-    def right(self) -> TreeNode | None:
-        return self._right
-
-    @right.setter
-    def right(self, value: TreeNode | TreeGenome | None):
-        self._set_face(config.ModuleFaces.RIGHT, value)
-
-    @property
-    def left(self) -> TreeNode | None:
-        return self._left
-
-    @left.setter
-    def left(self, value: TreeNode | TreeGenome | None):
-        self._set_face(config.ModuleFaces.LEFT, value)
-
-    @property
-    def top(self) -> TreeNode | None:
-        return self._top
-
-    @top.setter
-    def top(self, value: TreeNode | TreeGenome | None):
-        self._set_face(config.ModuleFaces.TOP, value)
-
-    @property
-    def bottom(self) -> TreeNode | None:
-        return self._bottom
-
-    @bottom.setter
-    def bottom(self, value: TreeNode | TreeGenome | None):
-        self._set_face(config.ModuleFaces.BOTTOM, value)
-
-    @property
-    def children(self) -> dict[config.ModuleFaces, TreeNode]:
-        result = {}
-        for face in config.ALLOWED_FACES[self.module_type]:
-            child = self.face_mapping(face)
-            result[face] = child
-        return result
-
-    @property
-    def num_descendants(self, exclude_nones: bool = True) -> int:
-        """Return the total number of descendant nodes."""
-        count = 0
-        for child in self.children.values():
-            if exclude_nones and child.module_type == config.ModuleType.NONE:
-                continue
-            count += 1 + child.num_descendants
-        return count
-
-    def __eq__(self, other: object) -> bool:
-        """Two nodes are equal if they have the same ID."""
-        # This is my approach now (Lukas), we could also check for other equalities.
-        if not isinstance(other, TreeNode):
-            return False
-        return self._id == other._id
-
-    def __hash__(self) -> int:
-        """Make TreeNode hashable using its ID."""
-        return hash(self._id)
-
-    def __ne__(self, other: object) -> bool:
-        """Not equal is the opposite of equal."""
-        return not self.__eq__(other)
-
-    def available_faces(self) -> list[config.ModuleFaces]:
-        """Return list of faces that can still accept children."""
-        available = []
-        for face in config.ALLOWED_FACES[self.module_type]:
-            if self._can_attach_to_face(face):
-                available.append(face)
-        return available
-
-    def __repr__(self) -> str:
-        """Return a nice string representation of the tree node."""
-        child_count = len(self.children)
-        available_count = len(self.available_faces())
-        child_info = f", {child_count} children" if child_count > 0 else ""
-        available_info = (
-            f", {available_count} available faces"
-            if available_count > 0
-            else ""
-        )
-        return f"TreeNode({self.module_type.name}, {self.rotation.name}, depth={self._depth}{child_info}{available_info})"
-
-    def get_child(self, face: config.ModuleFaces) -> TreeNode | None:
-        """Get the child at the specified face."""
-        if face not in config.ALLOWED_FACES[self.module_type]:
-            return None
-        return getattr(self, face.name.lower())
-
-    def find_node_dfs(self, target_id: int) -> TreeNode | None:
-        """Find a node by ID using Depth-First Search."""
-        if self._id == target_id:
-            return self
-
-        # Search children recursively
-        for child in self.children.values():
-            result = child.find_node_dfs(target_id)
-            if result is not None:
-                return result
-
-        return None
-
-    def find_node_bfs(self, target_id: int) -> TreeNode | None:
-        """Find a node by ID using Breadth-First Search."""
-        queue = deque([self])
-
-        while queue:
-            current = queue.popleft()
-
-            if current._id == target_id:
-                return current
-
-            # Add all children to queue
-            queue.extend(current.children.values())
-
-        return None
-
-    def find_all_nodes_dfs(
-        self,
-        predicate: Callable[TreeNode, bool] | None = None,
-    ) -> list[TreeNode]:
-        """Find all nodes matching a predicate using DFS."""
-        result = []
-
-        def dfs_helper(node: TreeNode):
-            if predicate is None or predicate(node):
-                result.append(node)
-
-            for child in node.children.values():
-                dfs_helper(child)
-
-        dfs_helper(self)
-        return result
-
-    def find_all_nodes_bfs(
-        self, predicate: Callable[TreeNode, bool] = None
-    ) -> list[TreeNode]:
-        """Find all nodes matching a predicate using BFS."""
-        result = []
-        queue = deque([self])
-
-        while queue:
-            current = queue.popleft()
-
-            if predicate is None or predicate(current):
-                result.append(current)
-
-            queue.extend(current.children.values())
-
-        return result
-
-    def get_all_nodes(self, mode: str = "dfs", exclude_root: bool = True):
+    def copy(self):
         """
-        Returns all the nodes in the subtree that has self as root node
+        Creates a completely independent clone of the current genome.
+        Any changes made to the clone will NOT affect the original.
         """
-        predicate_root: Callable[TreeNode, bool] = (
-            (lambda x: x.id != self.id) if exclude_root else (lambda _: True)
-        )
-        if mode == "dfs":
-            return self.find_all_nodes_dfs(predicate=predicate_root)
-        elif mode == "bfs":
-            return self.find_all_nodes_bfs(predicate=predicate_root)
-        else:
-            raise ValueError("Invalid mode. Valid modes: dfs, bfs")
+        # 1. Create a new instance with the same root ID
+        # Note: Since the tree structure is copied, we just need to initialize the object.
+        new_genome = TreeGenome()
+        
+        # 2. Use NetworkX's built-in deep copy for the graph
+        # This copies all nodes, edges, and their associated attribute dictionaries.
+        new_genome.tree = self.tree.copy()
+        
+        # 3. Ensure the root pointer is identical
+        new_genome.root_id = self.root_id
+        
+        return new_genome
 
-    def get_internal_nodes(self, mode: str = "dfs", exclude_root: bool = True):
+    def get_subtree_size(self, node_id):
         """
-        Returns all the non-leaf nodes in the subtree that has self as root node
+        Calculates the total number of nodes in the subtree rooted at node_id.
+        This includes the node itself and all nodes branching off from it.
         """
-        predicate_root: Callable[TreeNode, bool] = (
-            (lambda x: x.id != self.id) if exclude_root else (lambda _: True)
-        )
-        predicate_internal_nodes: Callable[TreeNode, bool] = (
-            lambda x: len(x.children) > 0
-        )
-        predicate_list = [predicate_root, predicate_internal_nodes]
-        predicate: Callable[TreeNode, bool] = lambda x: reduce(
-            lambda p, q: p(x) and q(x), predicate_list
-        )
-        if mode == "dfs":
-            return self.find_all_nodes_dfs(predicate=predicate)
-        elif mode == "bfs":
-            return self.find_all_nodes_bfs(predicate=predicate)
-        else:
-            raise ValueError("Invalid mode. Valid modes: dfs, bfs")
+        if node_id not in self.tree:
+            raise KeyError(f"Node {node_id} not found in the genome.")
 
-    def replace_node(self, node_to_remove: TreeNode, node_to_add: TreeNode):
-        """
-        1) Finds the parent of node_to_remove in self subtree
-        2) Replaces node_to_remove with node_to_add in the parent's children
-        """
-        predicate_is_parent = lambda x: node_to_remove in set(
-            x.children.values()
-        )
-        parent = self.find_all_nodes_dfs(predicate=predicate_is_parent)
-        # print("PARENTS LENGTH",len(parent))
-        if not parent or len(parent) > 1:
-            raise RuntimeError(
-                "Father not found, are you sure node_to_remove is in subtree?"
-            )
-        # We expect a list of len 1 in which there is the parent
-        parent = parent[0]
-        parent._set_face(
-            parent._get_face_given_child(node_to_remove.id),
-            node_to_add,
-            replacing=True,
-        )
+        # nx.descendants returns a set of all nodes reachable from node_id
+        # We add 1 to include the node_id itself
+        return len(nx.descendants(self.tree, node_id)) + 1
 
-    #def copy(self) -> TreeNode:
-    #    """Create a deep copy of this node and all its children."""
-    #    # Create new module instance
-    #    new_module = config.ModuleInstance(
-    #        type=self.module_type,
-    #        rotation=self.rotation,
-    #        links={},  # Will be rebuilt
-    #    )
-#
-#        # Create new node
-#        new_node = TreeNode(
-#            new_module,
-#            depth=self._depth,
-#        )
-#
-#        # Recursively copy children
-#        for face, child in self.children.items():
-#            child_copy = child.copy()
-#            new_node._set_face(face, child_copy)
-#
-#        return new_node
+def main():
+    print("--- 1. Creating Initial Genome (Parent A) ---")
+    parent_a = TreeGenome()
+    # Build a small branch: C -> B -> H
+    b_node = parent_a.add_node("B", 90, parent_a.root_id, "TOP")
+    parent_a.add_node("H", 0, b_node, "FRONT")
+    parent_a.display_tree()
 
-    def copy(self, depth_offset: int = 0) -> TreeNode:
-        """Create a 100% isolated deep copy of this node and all descendants."""
-        # Create a fresh ModuleInstance to ensure link dictionaries aren't shared
-        new_module = config.ModuleInstance(
-            type=self.module_type,
-            rotation=self.rotation,
-            links={} # Start with empty links to be rebuilt by _set_face
-        )
-        new_node = TreeNode(
-            new_module,
-            depth=self._depth + depth_offset,
-        )
-        # Explicitly copy children
-        for face, child in self.children.items():
-            if child.module_type != config.ModuleType.NONE:
-                # Recursive call ensures the entire subtree is isolated
-                new_node._set_face(face, child.copy(depth_offset), replacing=True)
-        return new_node
+    print("\n--- 2. Extracting Subtree (The B-H branch) ---")
+    genetic_branch = parent_a.extract_subtree(b_node)
+    genetic_branch.display_tree()
+    parent_a.display_tree()
 
-    def __copy__(self) -> TreeNode:
-        """Support for copy.copy() - creates deep copy for tree structures."""
-        return self.copy()
-
-    # ---------- JSON / dict serialization ----------
-    def to_dict(self) -> dict:
-        """
-        Serialize this node recursively.
-        Enums are stored by name (string). Children are a mapping face->child.
-        """
-        # Children as {face_name: child_dict}
-        children_dict = {
-            face.name: child.to_dict() for face, child in self.children.items()
-        }
-        return {
-            "id": self._id,
-            "depth": self._depth,
-            "module_type": self.module_type.name,
-            "rotation": self.rotation.name,
-            "children": children_dict,
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict) -> TreeNode:
-        """
-        Rebuild a TreeNode (and its subtree) from dict.
-        Uses _set_face so that ModuleInstance.links remains consistent.
-        """
-        # node_id = data["id"]
-        depth = data["depth"]
-        module_type = config.ModuleType[data["module_type"]]
-        rotation = config.ModuleRotationsIdx[data["rotation"]]
-
-        # Create the node with a fresh ModuleInstance and the preserved id/depth
-        node = cls(
-            module=config.ModuleInstance(
-                type=module_type, rotation=rotation, links={}
-            ),
-            depth=depth,
-            # node_id=node_id,
-        )
-
-        # Rebuild children through _set_face so links are updated properly.
-        children = data.get("children", {}) or {}
-        for face_name, child_payload in children.items():
-            face = config.ModuleFaces[face_name]
-            child_node = cls.from_dict(child_payload)
-            node._set_face(face, child_node)
-
-        return node
+    print("\n--- 3. Creating Second Genome (Parent B) ---")
+    parent_b = TreeGenome()
+    # Add a base node to Parent B
+    base_b = parent_b.add_node("B", 180, parent_b.root_id, "BOTTOM")
+    parent_b.display_tree()
 
 
-def test():
-    genome = TreeGenome()
-    genome.root = TreeNode(
-        config.ModuleInstance(
-            type=config.ModuleType.BRICK,
-            rotation=config.ModuleRotationsIdx.DEG_90,
-            links={},
-        )
-    )
-    genome.root.front = TreeNode(
-        config.ModuleInstance(
-            type=config.ModuleType.BRICK,
-            rotation=config.ModuleRotationsIdx.DEG_45,
-            links={},
-        )
-    )
-    genome.root.left = TreeNode(
-        config.ModuleInstance(
-            type=config.ModuleType.BRICK,
-            rotation=config.ModuleRotationsIdx.DEG_45,
-            links={},
-        )
-    )
+    print("\n--- 4. Grafting Branch from A onto Parent B ---")
+    # Graft the extracted branch onto the new base on a different face
+    parent_b.graft_subtree_inplace(genetic_branch, base_b)
+    parent_b.display_tree()
 
-    print(genome.root.front.available_faces())
-    print(genome)  # Shows full tree structure
-    print(genome.root)  # Shows node details with available faces
+    print("\n--- 5. Create a random subtree ---")
+    random_subtree = TreeGenome.create_random_subtree()
+    random_subtree.display_tree()
 
-    print(genome.root.get_all_nodes("dfs", True))
+    print("\n--- 6. Mutate Parent B ---")
+    mut=TreeGenome.get_mutator_object()
+    mut.which_mutation="random_subtree_replacement"
+    mut(parent_b)
+    parent_b.display_tree()
 
+    print("\n--- 7. Clone Mutated Parent B ---")
+    clone_b=parent_b.copy()
+    clone_b.display_tree()
+    
+    print("\n--- 8. Crossover Parent A and Parent B ---")
+    parent_a.display_tree()
+    parent_b.display_tree()
+    cross=TreeGenome.get_crossover_object()
+    cross.which_crossover="normal"
+    child1,child2=cross(parent_a,parent_b)
+    child1.display_tree()
+    child2.display_tree()
+    
 
 if __name__ == "__main__":
-    test()
+    main()
