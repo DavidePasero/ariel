@@ -189,7 +189,7 @@ class MultipleRunsDashboard:
 
         for run_idx, (populations, config) in enumerate(self.runs_data):
             timeline = []
-            for gen_idx, population in enumerate(populations):
+            for gen_idx, population in enumerate(populations[:-1]):
                 if population:
                     fitnesses = [ind.fitness for ind in population]
                     timeline.append({
@@ -205,7 +205,7 @@ class MultipleRunsDashboard:
         # Compute aggregated statistics across runs
         self.aggregated_timeline = []
 
-        for gen_idx in range(self.max_generation):
+        for gen_idx in range(self.max_generation-1):
             # Collect fitness values from all runs at this generation
             avg_fitnesses = []
             best_fitnesses = []
@@ -318,9 +318,9 @@ class MultipleRunsDashboard:
                     dcc.Slider(
                         id="generation-slider",
                         min=0,
-                        max=self.max_generation - 1,
+                        max=self.max_generation - 2,
                         step=1,
-                        value=self.max_generation - 1,
+                        value=self.max_generation - 2,
                         marks={
                             i: str(i)
                             for i in range(
@@ -1581,7 +1581,7 @@ class MultipleRunsDashboard:
         # Compute aggregated feature values across runs
         aggregated_data = []
 
-        for gen_idx in range(self.max_generation):
+        for gen_idx in range(self.max_generation-1):
             # Collect feature statistics from all runs at this generation
             feature_means = []
             feature_stds = []

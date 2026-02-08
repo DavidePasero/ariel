@@ -680,23 +680,44 @@ class GenomeEAExperiment:
         )
 
         ea.run()
-
+    
         # Get final statistics
-        best = ea.get_solution(only_alive=True)
+        best = ea.get_solution(only_alive=False)
         median = ea.get_solution("median", only_alive=False)
         worst = ea.get_solution("worst", only_alive=False)
 
         # Collect fitness statistics
         fitnesses = []
+#        max_tab = []
+#        avg_tab = []
+#        wor_tab = []
         for i in range(config.num_of_generations):
             ea.fetch_population(
-                only_alive=True,
+                only_alive=False,
                 best_comes=None,
-                #custom_logic=[Individual.time_of_birth == i],
+                custom_logic=[(Individual.time_of_birth <= i) & (Individual.time_of_death > i)],
             )
             gen_fitness_values = [ind.fitness for ind in ea.population]
+#            max_tab.append(np.max(gen_fitness_values))
+#            avg_tab.append(np.mean(gen_fitness_values))
+#            wor_tab.append(np.min(gen_fitness_values))
             if gen_fitness_values:
                 fitnesses.append(np.mean(gen_fitness_values))
+
+  #      for i in range(config.num_of_generations):
+  #          ea.fetch_population(
+  #              only_alive=False,
+  #              best_comes=None,
+  #              custom_logic=[(Individual.time_of_birth <= i) & (Individual.time_of_death > i)],
+  #          )
+  #          gen_tab = [ind.fitness for ind in ea.population]
+ #           np.save(str(config.output_folder)+"/gen_"+str(i)+"_run"+str(run_idx)+".npy",gen_tab)
+
+#        max_tab=np.array(max_tab)
+#        avg_tab=np.array(avg_tab)
+#        wor_tab=np.array(wor_tab)
+#        np.save(str(config.output_folder)+"/max_run"+str(run_idx)+".npy",max_tab)
+#        np.save(str(config.output_folder)+"/avg_run"+str(run_idx)+".npy",avg_tab)
 
         stats = {
             "run_idx": run_idx,
@@ -707,6 +728,17 @@ class GenomeEAExperiment:
             "final_avg_fitness": fitnesses[-1] if fitnesses else None,
             "db_file": str(config.db_file_path),
         }
+
+        #stats = {
+        #    "run_idx": run_idx,
+        #    "seed": seed,
+        #    "best_fitness": np.max(max_tab),
+        #    "median_fitness": np.mean(avg_tab),
+        #    "worst_fitness": np.min(wor_tab),
+        #    "final_avg_fitness": avg_tab[-1],
+        #    "db_file": str(config.db_file_path),
+        #}
+
 
         if not quiet:
             console.log(
