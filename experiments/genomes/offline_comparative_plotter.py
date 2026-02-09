@@ -205,7 +205,7 @@ class ComparativePlotter:
         """
         Compute aggregated statistics based on the selected metric_type.
         """
-        max_generation = max(len(populations) for populations, _ in runs_data) -1
+        max_generation = max(len(populations) for populations, _ in runs_data)
         num_runs = len(runs_data)
 
         # Initialize arrays
@@ -224,7 +224,7 @@ class ComparativePlotter:
             run_max_val = -float("inf")
             run_max_gen = -1
 
-            for gen_idx, population in enumerate(populations[:-1]):
+            for gen_idx, population in enumerate(populations):
                 if not population:
                     continue
 

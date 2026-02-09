@@ -40,8 +40,8 @@ distance_metric = "descriptor"
 quiet = false
 is_maximisation = true
 first_generation_id = 0
-num_of_generations = 200
-target_population_size = 100
+num_of_generations = 100
+target_population_size = 50
 
 # =========================
 # Data config

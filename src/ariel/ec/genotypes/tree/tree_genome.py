@@ -11,6 +11,14 @@ import uuid
 import random
 from networkx.readwrite import json_graph
 
+from ariel.body_phenotypes.robogen_lite.config import (
+    ModuleFaces,
+    ModuleRotationsTheta,
+    ModuleType,
+    ModuleInstance,
+    ModuleRotationsIdx,
+)
+
 from ariel.ec.genotypes.genotype import Genotype
 
 if TYPE_CHECKING:
@@ -28,13 +36,16 @@ RNG = np.random.default_rng(SEED)
 
 class TreeGenome(Genotype):
     VALID_TYPES = {"C", "B", "H"}
-    VALID_ROTATIONS = {0, 45, 90, 135, 180, 225, 270, 315}
-    VALID_FACES = {"FRONT", "BACK", "TOP", "BOTTOM", "LEFT", "RIGHT"}
+    VALID_ROTATIONS = {0, 90, 180, 270}
+    VALID_FACES = {"BACK","FRONT", "TOP", "BOTTOM", "LEFT", "RIGHT"}
+    VALID_FACES_BLOCK = {"FRONT", "TOP", "BOTTOM", "LEFT", "RIGHT"}
+    VALID_FACES_HINGE = {"FRONT"}
+    
 
     def __init__(self, root: TreeNode | None = None):
         self.tree = nx.DiGraph()
         self.root_id=str(uuid.uuid4())
-        self.tree.add_node(self.root_id, type="C", rotation=0)
+        self.tree.add_node(self.root_id, type=ModuleType.CORE.name, rotation="DEG_0")
 
     @staticmethod
     def get_crossover_object() -> TreeCrossover:
@@ -86,7 +97,13 @@ class TreeGenome(Genotype):
         if rotation not in self.VALID_ROTATIONS:
             raise ValueError(f"Rotation must be {self.VALID_ROTATIONS}")
         node_id = str(uuid.uuid4())
-        self.tree.add_node(node_id, type=node_type, rotation=rotation)
+        eltype=ModuleType.CORE.name
+        match node_type:
+            case "B":
+                eltype = ModuleType.BRICK.name
+            case "H":
+                eltype = ModuleType.HINGE.name
+        self.tree.add_node(node_id, type=eltype, rotation="DEG_"+str(rotation))
         self.tree.add_edge(parent_id, node_id, face=face)
         return node_id
 
@@ -160,8 +177,15 @@ class TreeGenome(Genotype):
         if parent_id not in self.tree:
             raise KeyError(f"Node {parent_id} not found in the genome.")
 
-        if face not in self.VALID_FACES:
-            raise ValueError(f"Invalid face name. Must be one of {self.VALID_FACES}")
+        available_faces = list(self.VALID_FACES)
+        match root_type:
+            case "B":
+                available_faces = list(self.VALID_FACES_BLOCK)
+            case "H":
+                available_faces = list(self.VALID_FACES_HINGE)
+
+        if face not in available_faces:
+            raise ValueError(f"Invalid face name. Must be one of {available_faces}")
 
         # Iterate through outgoing edges from the parent
         for _, child_id, edge_data in self.tree.out_edges(parent_id, data=True):
@@ -233,11 +257,17 @@ class TreeGenome(Genotype):
         new_genome = TreeGenome()
         new_genome.tree = nx.DiGraph()
         new_genome.root_id=root_id
-        new_genome.tree.add_node(root_id, type=root_type, rotation=root_rotation)
+        eltype=ModuleType.CORE.name
+        match root_type:
+            case "B":
+                eltype = ModuleType.BRICK.name
+            case "H":
+                eltype = ModuleType.HINGE.name
+        new_genome.tree.add_node(root_id, type=eltype, rotation="DEG_"+str(root_rotation))
 
         
         # 2. Start recursive growth
-        new_genome._grow_random_recursive(root_id, 1, max_depth, branching_prob,existing_nodes,max_modules)
+        new_genome._grow_random_recursive(root_id,root_type, 1, max_depth, branching_prob,existing_nodes,max_modules)
         
         return new_genome
     @staticmethod
@@ -250,15 +280,16 @@ class TreeGenome(Genotype):
         root_type = "C"
         root_id = str(uuid.uuid4())
         root_rotation = 0
-        
+        eltype=ModuleType.CORE.name
+
         new_genome = TreeGenome()
         new_genome.tree = nx.DiGraph()
         new_genome.root_id=root_id
-        new_genome.tree.add_node(root_id, type=root_type, rotation=root_rotation)
+        new_genome.tree.add_node(root_id, type=eltype, rotation="DEG_"+str(root_rotation))
 
         
         # 2. Start recursive growth
-        new_genome._grow_random_recursive(root_id, 1, max_depth, branching_prob,existing_nodes,max_modules)
+        new_genome._grow_random_recursive(root_id,root_type, 1, max_depth, branching_prob,existing_nodes,max_modules)
         
         return new_genome
 
@@ -279,14 +310,19 @@ class TreeGenome(Genotype):
             
         return random.choice(non_root_nodes)    
 
-    def _grow_random_recursive(self, parent_id, depth, max_depth, branching_prob,existing_modules,max_modules):
+    def _grow_random_recursive(self, parent_id, root_type,depth, max_depth, branching_prob,existing_modules,max_modules):
         if depth >= max_depth:
             return
 
         # Iterate through every possible face to decide if it sprouts a new component
+        
         available_faces = list(self.VALID_FACES)
+        match root_type:
+            case "B":
+                available_faces = list(self.VALID_FACES_BLOCK)
+            case "H":
+                available_faces = list(self.VALID_FACES_HINGE)
         random.shuffle(available_faces)
-
         for face in available_faces:
             # Check branching probability
             if random.random() < branching_prob:
@@ -298,7 +334,7 @@ class TreeGenome(Genotype):
                     # Add node and recurse
                     if existing_modules+1<max_modules:
                         new_node_id = self.add_node(node_type, rotation, parent_id, face)
-                        self._grow_random_recursive(new_node_id, depth + 1, max_depth, branching_prob,existing_modules+1,max_modules)
+                        self._grow_random_recursive(new_node_id,node_type, depth + 1, max_depth, branching_prob,existing_modules+1,max_modules)
 
     def display_tree(self, current_node=None, indent="", is_last=True, prefix="Root"):
         """
@@ -333,7 +369,10 @@ class TreeGenome(Genotype):
     def to_digraph(self):
         """Returns the underlying NetworkX DiGraph object."""
         # Returns a copy to prevent accidental external modification
-        return self.tree.copy()
+        export_tree = self.copy()
+        nodes_ordered = list(nx.bfs_tree(export_tree.tree, source=export_tree.root_id).nodes())
+        mapping = {node: i for i, node in enumerate(nodes_ordered)}
+        return nx.relabel_nodes(export_tree.tree, mapping)
 
     @staticmethod
     def from_json(json_str: str, **kwargs) -> "TreeGenome":
@@ -442,6 +481,8 @@ def main():
     child1,child2=cross(parent_a,parent_b)
     child1.display_tree()
     child2.display_tree()
+
+    print(child2.to_json())
     
 
 if __name__ == "__main__":
