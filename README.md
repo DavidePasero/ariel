@@ -62,6 +62,6 @@ path/to/tree_task     \
 path/to/lsystem_task  \
 path/to/cppn_task     \
 path/to/nde_task      \
---title "Fitness Comparison Between Four Genotypes on task" --names Tree L-System CPPN NDE"
+--title "Fitness Comparison Between Four Genotypes on task" --names Tree L-System CPPN NDE
 ```
 In here you don't have to list all the individual .db files but just the parent folders in which all the runs of a certain experiments are stored. The code will automatically aggregate the results of all the runs.
